@@ -209,6 +209,11 @@ class DebateEngine:
         self.state.status = "debating"
         self.add_thinking_update("System", "🤖", "Council is gathering project requirements...")
 
+        # Detect domain and get addons
+        search_suffix, prompt_instruction = classify_and_augment_domain(project_requirements)
+        if search_suffix:
+            self.add_thinking_update("System", "🤖", "Detected domain characteristics. Augmenting search parameters...")
+
         # Clear the research cache for a fresh session
         _research_cache.clear()
 
@@ -216,7 +221,7 @@ class DebateEngine:
             # First, let the agent do some research
             self.add_thinking_update(agent.name, agent.emoji, f"Searching for technologies related to {agent.search_guidance[:50]}...")
             research_results = await cached_research(
-                query=f"{agent.search_guidance} for: {project_requirements[:200]}",
+                query=f"{agent.search_guidance}{search_suffix} for: {project_requirements[:200]}",
                 config=self.config,
             )
 
@@ -231,6 +236,7 @@ class DebateEngine:
                 "3. Database(s)\n"
                 "4. Deployment and infrastructure\n"
                 "5. Key supporting tools and services\n\n"
+                f"{prompt_instruction}\n\n"
                 "Argue passionately from YOUR perspective. Maximum 300 words."
             )
 
@@ -269,6 +275,7 @@ class DebateEngine:
         Run a single round of the debate where agents respond to each other.
         """
         round_messages = []
+        search_suffix, prompt_instruction = classify_and_augment_domain(self.state.project_requirements)
 
         for agent in ALL_COUNCIL_AGENTS:
             self.add_thinking_update(agent.name, agent.emoji, f"Preparing arguments for Round {round_number}...")
@@ -289,7 +296,7 @@ class DebateEngine:
                 )
                 if other_agents_points:
                     research_query = (
-                        f"counter-arguments and evidence for {agent.search_guidance}: "
+                        f"counter-arguments and evidence for {agent.search_guidance}{search_suffix}: "
                         f"{other_agents_points[:200]}"
                     )
                     self.add_thinking_update(agent.name, agent.emoji, f"Running targeted search: {research_query[:50]}...")
@@ -337,6 +344,7 @@ class DebateEngine:
 
             user_prompt += (
                 f"## Your Task\n{round_instruction}\n\n"
+                f"{prompt_instruction}\n\n"
                 "Keep your response focused and under 250 words. "
                 "Be specific about technology choices."
             )
@@ -380,6 +388,7 @@ class DebateEngine:
         self.add_thinking_update("The Judge", "⚖️", "Reviewing transcripts and comparing council agents' arguments...")
 
         full_debate = self.state.get_compressed_debate_history()
+        _, prompt_instruction = classify_and_augment_domain(self.state.project_requirements)
 
         user_prompt = (
             f"## Project Requirements\n{self.state.project_requirements}\n\n"
@@ -388,7 +397,8 @@ class DebateEngine:
             "Synthesize the debate into 2-3 distinct hybrid architectures. "
             "Each architecture should combine the best ideas from the agents. "
             "Include Mermaid.js diagrams for each option. "
-            "Rank them and explain the trade-offs."
+            "Rank them and explain the trade-offs.\n"
+            f"{prompt_instruction}"
         )
 
         self.add_thinking_update("The Judge", "⚖️", "Synthesizing hybrid architectures & generating Mermaid diagrams...")
@@ -585,6 +595,7 @@ class DebateEngine:
         self.state.user_priorities = priorities
         self.state.status = "finalizing"
         self.add_thinking_update("The Judge", "🏆", "Preparing final recommendation verdict...")
+        _, prompt_instruction = classify_and_augment_domain(self.state.project_requirements)
 
         user_prompt = (
             f"## Project Requirements\n{self.state.project_requirements}\n\n"
@@ -594,7 +605,8 @@ class DebateEngine:
             "Based on the user's priority ratings, select the BEST architecture "
             "and MODIFY the tech stack choices to optimally match their priorities. "
             "If the user values cost (10/10) but latency is low (2/10), adjust accordingly. "
-            "Provide the complete final recommendation with a Mermaid.js diagram."
+            "Provide the complete final recommendation with a Mermaid.js diagram.\n"
+            f"{prompt_instruction}"
         )
 
         self.add_thinking_update("The Judge", "🏆", "Optimizing technical stack according to prioritized trade-offs...")
@@ -639,3 +651,56 @@ class DebateEngine:
         await self.start_alignment()
 
         return synthesis
+
+
+def classify_and_augment_domain(project_requirements: str) -> tuple[str, str]:
+    """
+    Analyzes project requirements for domain-specific keywords.
+    Returns:
+        1. A search query suffix (e.g. ' focusing on AI agents, RAG, vector databases')
+        2. A prompt instruction to append to LLM prompts.
+    """
+    req_lower = project_requirements.lower()
+    
+    domains = {
+        "ai": {
+            "keywords": ["ai", "artificial intelligence", "agent", "agentic", "llm", "large language model", "gpt", "rag", "vector", "embeddings", "machine learning", "deep learning", "nlp"],
+            "search_addon": "AI agents, LLM orchestrators, vector databases, RAG framework, ML inference",
+            "prompt_addon": "propose specific AI orchestrators (e.g. LangGraph, CrewAI, AutoGen, LlamaIndex), vector databases (e.g. Qdrant, pgvector, Milvus), and model serving tools."
+        },
+        "blockchain": {
+            "keywords": ["blockchain", "web3", "crypto", "nft", "smart contract", "ethereum", "solana", "dapp", "solidity", "decentralized"],
+            "search_addon": "web3 SDKs, smart contract frameworks, node RPC provider, indexer",
+            "prompt_addon": "propose smart contract environments (e.g. Hardhat, Foundry, Anchor), RPC providers (e.g. Alchemy, Infura), and Web3 integrations (e.g. ethers.js, viem)."
+        },
+        "iot": {
+            "keywords": ["iot", "internet of things", "embedded", "firmware", "sensor", "mqtt", "hardware", "arduino", "raspberry pi", "esp32"],
+            "search_addon": "IoT protocol broker, time-series database, embedded framework, IoT hub",
+            "prompt_addon": "propose time-series data stores (e.g. InfluxDB, TimescaleDB), protocol brokers (e.g. EMQX, Mosquitto), and firmware runtimes."
+        },
+        "data_engineering": {
+            "keywords": ["data pipeline", "etl", "elt", "data engineering", "analytics", "data warehouse", "big data", "spark", "kafka", "clickhouse", "snowflake"],
+            "search_addon": "data warehouse, ETL orchestrator, stream processing, OLAP engine",
+            "prompt_addon": "propose OLAP/Data warehouses (e.g. ClickHouse, Snowflake, DuckDB), stream processors (e.g. Kafka, Redpanda), and orchestrators (e.g. Airflow, Prefect, Dagster)."
+        },
+        "gaming": {
+            "keywords": ["game", "gaming", "unreal", "unity", "godot", "multiplayer", "physics engine", "webgl", "webgpu", "canvas"],
+            "search_addon": "game backend, real-time multiplayer server, WebGL/WebGPU framework",
+            "prompt_addon": "propose game engines/renderers (e.g. Three.js, PixiJS, Bevy), multiplayer networking (e.g. Colyseus, Socket.io), and game state databases."
+        }
+    }
+    
+    active_search_addons = []
+    active_prompt_addons = []
+    
+    for domain_name, config in domains.items():
+        if any(keyword in req_lower for keyword in config["keywords"]):
+            active_search_addons.append(config["search_addon"])
+            active_prompt_addons.append(config["prompt_addon"])
+            
+    if active_search_addons:
+        search_suffix = " focusing on " + ", ".join(active_search_addons)
+        prompt_instruction = "\nSince this project involves domain-specific requirements, you MUST explicitly: " + "; ".join(active_prompt_addons)
+        return search_suffix, prompt_instruction
+        
+    return "", ""
