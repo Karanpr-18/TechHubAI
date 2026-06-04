@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Float, Html, OrbitControls } from "@react-three/drei";
+import { Float, Html, OrbitControls, Environment } from "@react-three/drei";
 import { motion, AnimatePresence } from "framer-motion";
 import * as THREE from "three";
 import SafeMarkdown from "./components/SafeMarkdown";
@@ -84,7 +84,7 @@ function getSummary(content: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   3D Swarm Components (Clay & Glass Theme)
+   3D Swarm Components (Clay & Glass Refinement)
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface AgentNodeProps {
@@ -100,8 +100,8 @@ interface AgentNodeProps {
 function AgentOrb({ position, color, isActive, isJudge, emoji, name, onClick }: AgentNodeProps) {
   const coreRef = useRef<THREE.Mesh>(null);
   const outerGlassRef = useRef<THREE.Mesh>(null);
-  const targetScale = isActive ? 1.4 : 1;
-  const baseSize = isJudge ? 0.45 : 0.32;
+  const targetScale = isActive ? 1.45 : 1.0;
+  const baseSize = isJudge ? 0.44 : 0.32;
 
   useFrame((state) => {
     if (coreRef.current) {
@@ -111,8 +111,8 @@ function AgentOrb({ position, color, isActive, isJudge, emoji, name, onClick }: 
       );
     }
     if (outerGlassRef.current) {
-      const pulse = Math.sin(state.clock.elapsedTime * 3) * 0.05 + 1.2;
-      const glassScale = isActive ? targetScale * pulse : targetScale * 1.2;
+      const pulse = Math.sin(state.clock.elapsedTime * 2.8) * 0.05 + 1.22;
+      const glassScale = isActive ? targetScale * pulse : targetScale * 1.22;
       outerGlassRef.current.scale.lerp(
         new THREE.Vector3(glassScale, glassScale, glassScale),
         0.08
@@ -121,11 +121,12 @@ function AgentOrb({ position, color, isActive, isJudge, emoji, name, onClick }: 
   });
 
   return (
-    <Float speed={isActive ? 3.5 : 1.2} rotationIntensity={0.1} floatIntensity={isActive ? 0.45 : 0.15}>
+    <Float speed={isActive ? 3.2 : 1.0} rotationIntensity={0.12} floatIntensity={isActive ? 0.4 : 0.15}>
       <group position={position}>
-        {/* Outer glass sphere overlay */}
+        {/* Outer glass sphere overlay with high transmission refraction */}
         <mesh
           ref={outerGlassRef}
+          castShadow
           onClick={(e) => {
             e.stopPropagation();
             onClick();
@@ -142,36 +143,28 @@ function AgentOrb({ position, color, isActive, isJudge, emoji, name, onClick }: 
             color={color}
             transparent
             opacity={isActive ? 0.45 : 0.15}
-            roughness={0.08}
-            transmission={0.85}
-            thickness={0.35}
+            roughness={0.04}
+            transmission={0.92}
+            thickness={0.5}
             clearcoat={1.0}
-            clearcoatRoughness={0.1}
+            clearcoatRoughness={0.04}
           />
         </mesh>
 
-        {/* Inner solid clay core */}
-        <mesh ref={coreRef}>
-          <sphereGeometry args={[baseSize * 0.78, 32, 32]} />
-          <meshStandardMaterial
+        {/* Inner solid clay core with physical velvet sheen */}
+        <mesh ref={coreRef} castShadow>
+          <sphereGeometry args={[baseSize * 0.76, 32, 32]} />
+          <meshPhysicalMaterial
             color={color}
-            roughness={0.65}
-            metalness={0.02}
+            roughness={0.7}
+            metalness={0.0}
+            sheen={1.0}
+            sheenColor={color}
+            sheenRoughness={0.48}
           />
         </mesh>
 
-        {/* Shadow dot underneath representing ambient occlusion */}
-        <mesh position={[0, -baseSize * 1.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[baseSize * 1.2, baseSize * 1.2]} />
-          <meshBasicMaterial
-            color="#5a5046"
-            transparent
-            opacity={isActive ? 0.18 : 0.06}
-            depthWrite={false}
-          />
-        </mesh>
-
-        {/* Agent label badge */}
+        {/* Dynamic HTML label badge */}
         <Html center distanceFactor={8} style={{ pointerEvents: "none" }}>
           <div
             style={{
@@ -182,10 +175,10 @@ function AgentOrb({ position, color, isActive, isJudge, emoji, name, onClick }: 
               fontSize: isJudge ? "11px" : "10px",
               whiteSpace: "nowrap",
               padding: "4px 10px",
-              background: "rgba(255, 255, 255, 0.88)",
+              background: "rgba(255, 255, 255, 0.9)",
               border: `1px solid ${isActive ? color : "rgba(138, 115, 85, 0.12)"}`,
               borderRadius: "20px",
-              boxShadow: "0 6px 16px rgba(120, 110, 95, 0.06)",
+              boxShadow: "0 6px 16px rgba(120, 110, 95, 0.05)",
               transform: "translateY(38px)",
               transition: "all 0.3s ease",
             }}
@@ -311,35 +304,43 @@ function SwarmScene({
   });
 
   return (
-    <group ref={groupRef}>
-      {connections.map((conn, i) => {
-        const a = agents[conn.from];
-        const b = agents[conn.to];
-        const isActive = activeAgent === a.name || activeAgent === b.name;
-        return (
-          <ConnectionLine
-            key={i}
-            start={a.pos}
-            end={b.pos}
-            isActive={isActive}
-            color={isActive ? (activeAgent === a.name ? a.color : b.color) : "#8a7355"}
-          />
-        );
-      })}
+    <>
+      {/* Background shadow receiver plane */}
+      <mesh position={[0, 0, -1.8]} receiveShadow>
+        <planeGeometry args={[30, 20]} />
+        <shadowMaterial opacity={0.08} />
+      </mesh>
 
-      {agents.map((agent) => (
-        <AgentOrb
-          key={agent.name}
-          position={agent.pos}
-          color={agent.color}
-          emoji={agent.emoji}
-          name={agent.name}
-          isActive={activeAgent === agent.name}
-          isJudge={agent.isJudge}
-          onClick={() => setActiveAgent(activeAgent === agent.name ? null : agent.name)}
-        />
-      ))}
-    </group>
+      <group ref={groupRef}>
+        {connections.map((conn, i) => {
+          const a = agents[conn.from];
+          const b = agents[conn.to];
+          const isActive = activeAgent === a.name || activeAgent === b.name;
+          return (
+            <ConnectionLine
+              key={i}
+              start={a.pos}
+              end={b.pos}
+              isActive={isActive}
+              color={isActive ? (activeAgent === a.name ? a.color : b.color) : "#8a7355"}
+            />
+          );
+        })}
+
+        {agents.map((agent) => (
+          <AgentOrb
+            key={agent.name}
+            position={agent.pos}
+            color={agent.color}
+            emoji={agent.emoji}
+            name={agent.name}
+            isActive={activeAgent === agent.name}
+            isJudge={agent.isJudge}
+            onClick={() => setActiveAgent(activeAgent === agent.name ? null : agent.name)}
+          />
+        ))}
+      </group>
+    </>
   );
 }
 
@@ -693,18 +694,42 @@ export default function Home() {
 
   return (
     <div className="app-container">
+      {/* Background Blobs */}
+      <div className="bg-blobs">
+        <div className="blob blob--orange" />
+        <div className="blob blob--green" />
+        <div className="blob blob--blue" />
+      </div>
+
       {/* Fullscreen 3D Swarm Backdrop */}
       <div className="fullscreen-canvas-container">
         <Suspense fallback={null}>
           <Canvas
+            shadows={{ type: THREE.PCFShadowMap }}
             camera={{ position: [0, 0, 7.8], fov: 45 }}
             style={{ background: "transparent" }}
             dpr={[1, 2]}
           >
-            <ambientLight intensity={0.65} color="#fffcf0" />
-            <directionalLight position={[10, 15, 10]} intensity={1.5} color="#fffaf0" />
+            <ambientLight intensity={0.7} color="#fffcf0" />
+            <directionalLight
+              position={[5, 10, 6]}
+              intensity={1.3}
+              color="#fffbf2"
+              castShadow
+              shadow-mapSize-width={1024}
+              shadow-mapSize-height={1024}
+              shadow-camera-far={20}
+              shadow-camera-left={-6}
+              shadow-camera-right={6}
+              shadow-camera-top={6}
+              shadow-camera-bottom={-6}
+              shadow-bias={-0.0005}
+            />
             <pointLight position={[-10, -15, -10]} intensity={0.5} color="#e0f2fe" />
+            <directionalLight position={[0, 0, -6]} intensity={0.6} color="#ffffff" />
+            
             <SwarmScene activeAgent={activeAgent} setActiveAgent={setActiveAgent} />
+            
             <OrbitControls enableZoom={true} enablePan={false} maxDistance={12} minDistance={4} />
           </Canvas>
         </Suspense>

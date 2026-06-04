@@ -9,17 +9,17 @@
 
 :root {
   /* Colors - Warm Light Clay Theme */
-  --bg-base: #f5f5f0;
+  --bg-base: #f9f8f4;
   --bg-card: rgba(255, 255, 255, 0.72);
-  --bg-card-hover: rgba(255, 255, 255, 0.88);
+  --bg-card-hover: rgba(255, 255, 255, 0.86);
   --bg-input: rgba(255, 255, 255, 0.95);
   --bg-elevated: #ffffff;
-  --bg-button-hover: #eaeae0;
+  --bg-button-hover: #f1ebd9;
 
   /* Accent Tones */
   --accent-primary: #8a7355; /* Warm Earthy Bronze */
   --accent-primary-light: #ab9474;
-  --accent-primary-glow: rgba(138, 115, 85, 0.08);
+  --accent-primary-glow: rgba(138, 115, 85, 0.06);
   --accent-secondary: #5c786a; /* Soft Sage Green */
   --accent-tertiary: #a65b5b; /* Soft Terracotta */
   --accent-warm: #c28851; /* Warm Ochre */
@@ -96,25 +96,77 @@ body {
   overflow-x: hidden;
 }
 
-/* Background gradient + grain overlay */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--bg-base-gradient);
-  pointer-events: none;
-  z-index: -2;
-}
-
+/* Background grain overlay */
 body::after {
   content: '';
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  opacity: 0.03;
+  opacity: 0.025;
   pointer-events: none;
   z-index: -1;
   background-image: radial-gradient(var(--text-primary) 1px, transparent 0);
   background-size: 24px 24px;
+}
+
+/* ─── Background Gradient Blobs ────────────────────────────────────── */
+
+.bg-blobs {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.26;
+  mix-blend-mode: multiply;
+  animation: blobFloat 20s infinite ease-in-out alternate;
+}
+
+.blob--orange {
+  top: -10%;
+  left: -5%;
+  width: 48vw;
+  height: 48vw;
+  background: radial-gradient(circle, #e9c46a 0%, rgba(233, 196, 106, 0) 70%);
+  animation-duration: 25s;
+}
+
+.blob--green {
+  bottom: -15%;
+  right: -5%;
+  width: 52vw;
+  height: 52vw;
+  background: radial-gradient(circle, #a8dadc 0%, rgba(168, 218, 220, 0) 70%);
+  animation-duration: 30s;
+}
+
+.blob--blue {
+  top: 35%;
+  left: 45%;
+  width: 40vw;
+  height: 40vw;
+  background: radial-gradient(circle, #83c5be 0%, rgba(131, 197, 190, 0) 70%);
+  animation-duration: 22s;
+  animation-delay: -5s;
+}
+
+@keyframes blobFloat {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate(60px, -40px) scale(1.1) rotate(120deg);
+  }
+  100% {
+    transform: translate(-30px, 60px) scale(0.95) rotate(240deg);
+  }
 }
 
 /* ─── Scrollbar ────────────────────────────────────────────────────── */
@@ -258,13 +310,15 @@ body::after {
   background: var(--accent-primary);
 }
 
-/* ─── Glass Card (Claymorphic) ────────────────────────────────────── */
+/* ─── Glass Card (Claymorphic with Double Border) ─────────────────── */
 
 .glass-card {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(138, 115, 85, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.8);
+  outline-offset: -3px;
   border-radius: var(--radius-lg);
   padding: 2rem;
   box-shadow: var(--shadow-clay);
@@ -274,7 +328,8 @@ body::after {
 
 .glass-card:hover {
   background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(138, 115, 85, 0.16);
+  outline-color: rgba(255, 255, 255, 0.95);
   box-shadow: var(--shadow-lg), var(--shadow-clay);
 }
 
@@ -480,17 +535,22 @@ body::after {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(138, 115, 85, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -3px;
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
   box-shadow: var(--shadow-clay);
-  transition: box-shadow var(--transition-default);
+  transition: all var(--transition-default);
 }
 
 .debate-feed:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(138, 115, 85, 0.16);
+  outline-color: rgba(255, 255, 255, 0.95);
   box-shadow: var(--shadow-lg), var(--shadow-clay);
 }
 
@@ -506,7 +566,7 @@ body::after {
 
 .debate-feed__title {
   font-family: var(--font-serif);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -540,7 +600,7 @@ body::after {
   background: rgba(255, 255, 255, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 10px rgba(120, 110, 95, 0.04);
+  box-shadow: 0 4px 10px rgba(120, 110, 95, 0.03);
   transition: all var(--transition-default);
   position: relative;
 }
@@ -649,16 +709,21 @@ body::after {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(138, 115, 85, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -3px;
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: var(--shadow-clay);
-  transition: box-shadow var(--transition-default);
+  transition: all var(--transition-default);
 }
 
 .activity-log:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(138, 115, 85, 0.16);
+  outline-color: rgba(255, 255, 255, 0.95);
   box-shadow: var(--shadow-lg), var(--shadow-clay);
 }
 
@@ -671,7 +736,7 @@ body::after {
 
 .activity-log__title {
   font-family: var(--font-serif);
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -734,7 +799,7 @@ body::after {
 .interjection-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(43, 41, 39, 0.35);
+  background: rgba(43, 41, 39, 0.25);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
@@ -747,7 +812,9 @@ body::after {
   width: 580px;
   max-width: 92vw;
   background: var(--bg-elevated);
-  border: 1px solid rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(138, 115, 85, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.9);
+  outline-offset: -4px;
   border-radius: var(--radius-xl);
   padding: 2.5rem;
   box-shadow: var(--shadow-lg), var(--shadow-clay);
@@ -779,7 +846,7 @@ body::after {
 
 .interjection-card__title {
   font-family: var(--font-serif);
-  font-size: 1.4rem;
+  font-size: 1.45rem;
   font-weight: 700;
   color: var(--text-primary);
   text-align: center;
@@ -845,7 +912,9 @@ body::after {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(138, 115, 85, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -3px;
   border-radius: var(--radius-lg);
   margin-bottom: 1.5rem;
   box-shadow: var(--shadow-clay);
@@ -854,6 +923,8 @@ body::after {
 
 .architecture-card:hover {
   background: var(--bg-card-hover);
+  border-color: rgba(138, 115, 85, 0.16);
+  outline-color: rgba(255, 255, 255, 0.95);
   box-shadow: var(--shadow-lg), var(--shadow-clay);
 }
 
@@ -921,18 +992,13 @@ body::after {
   background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(138, 115, 85, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.9);
+  outline-offset: -4px;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg), var(--shadow-clay);
   z-index: 10;
   position: relative;
-}
-
-.final-verdict__content {
-  font-size: 0.95rem;
-  line-height: 1.8;
-  color: var(--text-primary);
-  white-space: pre-wrap;
 }
 
 /* ─── BYOK Settings Panel ──────────────────────────────────────────── */
