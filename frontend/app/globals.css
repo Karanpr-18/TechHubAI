@@ -919,3 +919,214 @@ body::before {
     height: 20px;
   }
 }
+
+/* ─── Swarm Dashboard Split Columns ────────────────────────────────── */
+.swarm-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
+  gap: 1.5rem;
+  margin-top: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 992px) {
+  .swarm-dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+.swarm-dashboard__left {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ─── Swarm Graph Card ─────────────────────────────────────────────── */
+.swarm-graph-card {
+  padding: 1.5rem;
+  background: var(--gradient-glass);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.swarm-graph-card__title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.swarm-graph-container {
+  width: 100%;
+  max-width: 450px;
+  margin: 0 auto;
+  aspect-ratio: 5 / 4;
+}
+
+.swarm-svg {
+  display: block;
+}
+
+/* Connection Lines */
+.swarm-line {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1.5;
+  transition: all var(--transition-slow);
+}
+
+.swarm-line--active {
+  stroke: var(--accent-secondary);
+  stroke-width: 2.5;
+  stroke-dasharray: 6, 3;
+  animation: swarmDash 1.2s linear infinite;
+  filter: drop-shadow(0 0 4px var(--accent-secondary));
+}
+
+@keyframes swarmDash {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+/* Nodes */
+.swarm-node {
+  transition: transform var(--transition-default);
+}
+
+.swarm-node-bg {
+  transition: all var(--transition-default);
+}
+
+.swarm-node--active .swarm-node-bg {
+  stroke-dasharray: 0;
+}
+
+.swarm-node-pulse {
+  animation: swarmPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  transform-origin: center;
+}
+
+@keyframes swarmPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.4;
+  }
+}
+
+.swarm-node-emoji {
+  user-select: none;
+  pointer-events: none;
+}
+
+.swarm-node-label {
+  font-family: var(--font-sans);
+  user-select: none;
+  pointer-events: none;
+  transition: fill var(--transition-default);
+}
+
+/* ─── Activity Log Sidebar ────────────────────────────────────────── */
+.thinking-log-card {
+  padding: 1.5rem;
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+  background: var(--gradient-glass);
+}
+
+.thinking-log-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.thinking-log-stream {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-right: 0.5rem;
+}
+
+.thinking-log-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  margin-top: 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.thinking-log-item {
+  font-size: 0.825rem;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.thinking-log-time {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.thinking-log-emoji {
+  flex-shrink: 0;
+}
+
+.thinking-log-text {
+  color: var(--text-primary);
+}
+
+.thinking-log-text strong {
+  color: var(--accent-primary);
+}
+
+/* ─── Summarized Cards & Expandable Details ─────────────────────────── */
+.agent-message__summary {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.agent-message__toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--transition-fast);
+}
+
+.agent-message__toggle-btn:hover {
+  color: var(--accent-secondary);
+  text-decoration: underline;
+}
+

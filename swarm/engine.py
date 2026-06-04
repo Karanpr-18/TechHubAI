@@ -34,6 +34,14 @@ class DebateMessage:
 
 
 @dataclass
+class ThinkingUpdate:
+    """A progress update during the swarm reasoning process."""
+    agent_name: str
+    agent_emoji: str
+    status_text: str
+
+
+@dataclass
 class UserPriorities:
     """User's 1-10 ratings for different factors."""
     tech_difficulty: int = 5
@@ -64,6 +72,7 @@ class DebateState:
     """The full state of a debate session."""
     project_requirements: str = ""
     messages: list[DebateMessage] = field(default_factory=list)
+    thinking_updates: list[ThinkingUpdate] = field(default_factory=list)
     initial_proposals: dict[str, str] = field(default_factory=dict)
     judge_synthesis: str = ""
     user_priorities: Optional[UserPriorities] = None
@@ -184,6 +193,12 @@ class DebateEngine:
             else:
                 cb(message)
 
+    def add_thinking_update(self, agent_name: str, agent_emoji: str, status_text: str):
+        """Append a status update to the thinking timeline."""
+        update = ThinkingUpdate(agent_name=agent_name, agent_emoji=agent_emoji, status_text=status_text)
+        self.state.thinking_updates.append(update)
+        print(f"[{agent_name}] {status_text}")
+
     # ─── Phase 1: Initial Proposals ──────────────────────────────────────
 
     async def generate_initial_proposals(self, project_requirements: str) -> dict[str, str]:
@@ -192,17 +207,20 @@ class DebateEngine:
         """
         self.state.project_requirements = project_requirements
         self.state.status = "debating"
+        self.add_thinking_update("System", "🤖", "Council is gathering project requirements...")
 
         # Clear the research cache for a fresh session
         _research_cache.clear()
 
         async def _generate_proposal(agent: AgentPersona) -> tuple[str, str]:
             # First, let the agent do some research
+            self.add_thinking_update(agent.name, agent.emoji, f"Searching for technologies related to {agent.search_guidance[:50]}...")
             research_results = await cached_research(
                 query=f"{agent.search_guidance} for: {project_requirements[:200]}",
                 config=self.config,
             )
 
+            self.add_thinking_update(agent.name, agent.emoji, f"Formulating initial proposal stack based on research...")
             user_prompt = (
                 f"## Project Requirements\n{project_requirements}\n\n"
                 f"## Your Research Findings\n{research_results}\n\n"
@@ -232,6 +250,7 @@ class DebateEngine:
                 research_used=[research_results[:200]],
             )
             self.state.messages.append(msg)
+            self.add_thinking_update(agent.name, agent.emoji, "Published initial stack proposal.")
             await self._notify(msg)
 
             return agent.name, response
@@ -252,6 +271,7 @@ class DebateEngine:
         round_messages = []
 
         for agent in ALL_COUNCIL_AGENTS:
+            self.add_thinking_update(agent.name, agent.emoji, f"Preparing arguments for Round {round_number}...")
             # Get the debate context (compressed for older rounds)
             if round_number <= 1:
                 context = self.state.get_debate_history()
@@ -272,6 +292,7 @@ class DebateEngine:
                         f"counter-arguments and evidence for {agent.search_guidance}: "
                         f"{other_agents_points[:200]}"
                     )
+                    self.add_thinking_update(agent.name, agent.emoji, f"Running targeted search: {research_query[:50]}...")
                     research_context = await cached_research(
                         query=research_query,
                         config=self.config,
@@ -305,6 +326,7 @@ class DebateEngine:
                 f"ROUND {round_number} - Continue the debate."
             )
 
+            self.add_thinking_update(agent.name, agent.emoji, f"Drafting critique and tech recommendations for Round {round_number}...")
             user_prompt = (
                 f"## Project Requirements\n{self.state.project_requirements}\n\n"
                 f"## Debate History\n{context}\n\n"
@@ -334,6 +356,7 @@ class DebateEngine:
                 research_used=[research_context[:200]] if research_context else [],
             )
             self.state.messages.append(msg)
+            self.add_thinking_update(agent.name, agent.emoji, f"Published Round {round_number} response.")
             round_messages.append(msg)
             await self._notify(msg)
 
@@ -354,6 +377,7 @@ class DebateEngine:
         The Judge reviews the entire debate and synthesizes 2-3 hybrid architectures.
         """
         self.state.status = "awaiting_priorities"
+        self.add_thinking_update("The Judge", "⚖️", "Reviewing transcripts and comparing council agents' arguments...")
 
         full_debate = self.state.get_compressed_debate_history()
 
@@ -367,6 +391,7 @@ class DebateEngine:
             "Rank them and explain the trade-offs."
         )
 
+        self.add_thinking_update("The Judge", "⚖️", "Synthesizing hybrid architectures & generating Mermaid diagrams...")
         self.state.judge_synthesis = await call_llm(
             config=self.config.primary_llm,
             system_prompt=JUDGE_SYSTEM_PROMPT,
@@ -382,6 +407,7 @@ class DebateEngine:
             round_number=99,
             content=self.state.judge_synthesis,
         )
+        self.add_thinking_update("The Judge", "⚖️", "Synthesis complete. Starting conversational alignment...")
         await self._notify(msg)
 
         return self.state.judge_synthesis
@@ -396,6 +422,7 @@ class DebateEngine:
         self.state.status = "alignment_chat"
         self.state.alignment_turns = 1
         self.state.alignment_history = []
+        self.add_thinking_update("The Judge", "⚖️", "Analyzing project trade-offs to spot remaining ambiguities...")
 
         system_prompt = (
             "You are the Technical Judge. The council agents have finished debating.\n"
@@ -413,6 +440,7 @@ class DebateEngine:
             "Determine the single most critical trade-off and ask your question."
         )
 
+        self.add_thinking_update("The Judge", "⚖️", "Composing critical trade-off clarification question...")
         first_question = await call_llm(
             config=self.config.primary_llm,
             system_prompt=system_prompt,
@@ -441,6 +469,7 @@ class DebateEngine:
         Processes a user response in the alignment chat.
         Evaluates their response, updates ratings, and either generates the next question or the final verdict.
         """
+        self.add_thinking_update("The Judge", "⚖️", "Received user response. Evaluating alignment trade-offs...")
         # Store user response
         self.state.alignment_history.append({"role": "user", "content": user_response})
         
@@ -496,6 +525,7 @@ class DebateEngine:
             "Analyze and return the JSON object."
         )
 
+        self.add_thinking_update("The Judge", "⚖️", "Recalculating score priorities and generating next step...")
         response_str = await call_llm(
             config=self.config.primary_llm,
             system_prompt=system_prompt,
@@ -554,6 +584,7 @@ class DebateEngine:
         """
         self.state.user_priorities = priorities
         self.state.status = "finalizing"
+        self.add_thinking_update("The Judge", "🏆", "Preparing final recommendation verdict...")
 
         user_prompt = (
             f"## Project Requirements\n{self.state.project_requirements}\n\n"
@@ -566,6 +597,7 @@ class DebateEngine:
             "Provide the complete final recommendation with a Mermaid.js diagram."
         )
 
+        self.add_thinking_update("The Judge", "🏆", "Optimizing technical stack according to prioritized trade-offs...")
         self.state.final_verdict = await call_llm(
             config=self.config.primary_llm,
             system_prompt=JUDGE_FINAL_VERDICT_PROMPT,
@@ -583,6 +615,7 @@ class DebateEngine:
             round_number=100,
             content=self.state.final_verdict,
         )
+        self.add_thinking_update("The Judge", "🏆", "Final verdict published.")
         await self._notify(msg)
 
         return self.state.final_verdict

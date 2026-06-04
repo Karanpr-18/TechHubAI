@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import SafeMarkdown from "./components/SafeMarkdown";
 
@@ -13,6 +12,13 @@ interface DebateMessage {
   agent_title: string;
   round_number: number;
   content: string;
+}
+
+interface ThinkingUpdate {
+  agent_name: string;
+  agent_emoji: string;
+  status_text: string;
+  timestamp?: string;
 }
 
 interface UserPriorities {
@@ -32,15 +38,6 @@ interface Settings {
   api_key: string;
   api_url: string;
 }
-
-interface FactorInfo {
-  status: "clear" | "ambiguous";
-  rating: number;
-  explanation: string;
-  question: string;
-}
-
-type Questionnaire = Record<string, FactorInfo>;
 
 type AppPhase =
   | "input"
@@ -133,19 +130,157 @@ const AGENT_CLASS_MAP: Record<string, string> = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Helper Functions
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function getSummary(content: string): string {
+  if (!content) return "";
+  let clean = content
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`([^`]+)`/g, "$1");
+
+  const sentences = clean.split(/[.!?]+\s+/);
+  if (sentences.length > 0) {
+    const summary = sentences.slice(0, 2).join(". ").trim();
+    if (summary.length > 30) {
+      return summary + (summary.endsWith(".") ? "" : ".");
+    }
+  }
+  return clean.slice(0, 160).trim() + (clean.length > 160 ? "..." : "");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Swarm Graph SVG Component
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function SwarmGraph({ activeAgent }: { activeAgent: string | null }) {
+  const nodes = [
+    { name: "The Veteran", emoji: "🏛️", x: 120, y: 80, color: "#8b9dc3" },
+    { name: "The Scaler", emoji: "🚀", x: 380, y: 80, color: "#00d4aa" },
+    { name: "The Mad Scientist", emoji: "🧪", x: 380, y: 320, color: "#ffa94d" },
+    { name: "The Pioneer", emoji: "⚡", x: 120, y: 320, color: "#ff6b6b" },
+    { name: "The Judge", emoji: "⚖️", x: 250, y: 200, color: "#7c5cfc" },
+  ];
+
+  const connections = [
+    { from: "The Veteran", to: "The Scaler" },
+    { from: "The Scaler", to: "The Mad Scientist" },
+    { from: "The Mad Scientist", to: "The Pioneer" },
+    { from: "The Pioneer", to: "The Veteran" },
+    { from: "The Veteran", to: "The Judge" },
+    { from: "The Scaler", to: "The Judge" },
+    { from: "The Mad Scientist", to: "The Judge" },
+    { from: "The Pioneer", to: "The Judge" },
+  ];
+
+  return (
+    <div className="swarm-graph-container">
+      <svg width="100%" height="100%" viewBox="0 0 500 400" className="swarm-svg">
+        <defs>
+          <radialGradient id="judge-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#7c5cfc" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#7c5cfc" stopOpacity="0" />
+          </radialGradient>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        <circle cx="250" cy="200" r="120" fill="url(#judge-glow)" />
+
+        {connections.map((conn, idx) => {
+          const fromNode = nodes.find((n) => n.name === conn.from)!;
+          const toNode = nodes.find((n) => n.name === conn.to)!;
+          const isActive = activeAgent === conn.from || activeAgent === conn.to;
+
+          return (
+            <line
+              key={idx}
+              x1={fromNode.x}
+              y1={fromNode.y}
+              x2={toNode.x}
+              y2={toNode.y}
+              className={`swarm-line ${isActive ? "swarm-line--active" : ""}`}
+            />
+          );
+        })}
+
+        {nodes.map((node, idx) => {
+          const isActive = activeAgent === node.name;
+          const isJudge = node.name === "The Judge";
+
+          return (
+            <g key={idx} className={`swarm-node ${isActive ? "swarm-node--active" : ""}`}>
+              {(isActive || isJudge) && (
+                <circle
+                  cx={node.x}
+                  cy={node.y}
+                  r={isJudge ? 38 : 32}
+                  fill={node.color}
+                  opacity="0.2"
+                  className="swarm-node-pulse"
+                />
+              )}
+
+              <circle
+                cx={node.x}
+                cy={node.y}
+                r={isJudge ? 28 : 24}
+                fill="#16161f"
+                stroke={isActive ? node.color : "rgba(255,255,255,0.15)"}
+                strokeWidth={isActive ? 3 : 1.5}
+                filter={isActive ? "url(#glow)" : undefined}
+                className="swarm-node-bg"
+              />
+
+              <text
+                x={node.x}
+                y={node.y + 6}
+                textAnchor="middle"
+                fontSize={isJudge ? "1.4rem" : "1.2rem"}
+                className="swarm-node-emoji"
+              >
+                {node.emoji}
+              </text>
+
+              <text
+                x={node.x}
+                y={node.y + (isJudge ? 42 : 38)}
+                textAnchor="middle"
+                fill={isActive ? node.color : "#8888a0"}
+                fontSize="0.75rem"
+                fontWeight={isActive ? "700" : "500"}
+                className="swarm-node-label"
+              >
+                {node.name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Main Component
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function Home() {
-  // State
   const [phase, setPhase] = useState<AppPhase>("input");
   const [requirements, setRequirements] = useState("");
   const [messages, setMessages] = useState<DebateMessage[]>([]);
+  const [thinkingUpdates, setThinkingUpdates] = useState<ThinkingUpdate[]>([]);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [expandedMessages, setExpandedMessages] = useState<Record<number, boolean>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [judgeSynthesis, setJudgeSynthesis] = useState("");
   const [finalVerdict, setFinalVerdict] = useState("");
-  const [priorities, setPriorities] =
-    useState<UserPriorities>(DEFAULT_PRIORITIES);
+  const [priorities, setPriorities] = useState<UserPriorities>(DEFAULT_PRIORITIES);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<Settings>({
     provider: "groq",
@@ -154,32 +289,44 @@ export default function Home() {
     api_url: "http://localhost:8000",
   });
   const [error, setError] = useState<string | null>(null);
-  const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
   const [userAlignmentResponse, setUserAlignmentResponse] = useState("");
   const [alignmentSubmitting, setAlignmentSubmitting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  /* ─── API Helpers ───────────────────────────────────────────────── */
+  // Auto-scroll thinking logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thinkingUpdates]);
 
   const apiBase = settings.api_url;
+
+  const toggleMessage = (idx: number) => {
+    setExpandedMessages((prev) => ({
+      ...prev,
+      [idx]: !prev[idx],
+    }));
+  };
 
   const startDebate = useCallback(async () => {
     if (!requirements.trim()) return;
 
     setPhase("debating");
     setMessages([]);
+    setThinkingUpdates([]);
+    setActiveAgent(null);
+    setExpandedMessages({});
     setError(null);
     setJudgeSynthesis("");
     setFinalVerdict("");
 
     try {
-      // Start the debate
       const res = await fetch(`${apiBase}/api/debate/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,24 +345,33 @@ export default function Home() {
       const data = await res.json();
       setSessionId(data.session_id);
 
-      // Connect to SSE stream
-      const eventSource = new EventSource(
-        `${apiBase}/api/debate/stream/${data.session_id}`
-      );
+      const eventSource = new EventSource(`${apiBase}/api/debate/stream/${data.session_id}`);
 
       eventSource.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
 
+          if (msg.type === "thinking") {
+            const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            setThinkingUpdates((prev) => [...prev, { ...msg, timestamp: time }]);
+            setActiveAgent(msg.agent_name);
+            return;
+          }
+
           if (msg.type === "status") {
+            setPhase(msg.status);
+            setActiveAgent(null);
             if (msg.status === "alignment_chat") {
-              setPhase("alignment_chat");
-              // Fetch the judge synthesis and messages
               fetch(`${apiBase}/api/debate/status/${data.session_id}`)
                 .then((r) => r.json())
                 .then((statusData) => {
                   setJudgeSynthesis(statusData.judge_synthesis || "");
                   setMessages(statusData.messages || []);
+                  const logs = statusData.thinking_updates?.map((u: any) => ({
+                    ...u,
+                    timestamp: u.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                  })) || [];
+                  setThinkingUpdates(logs);
                 });
             } else if (msg.status === "error") {
               setPhase("error");
@@ -225,8 +381,8 @@ export default function Home() {
             return;
           }
 
-          // It's a debate message
           setMessages((prev) => [...prev, msg as DebateMessage]);
+          setActiveAgent(null);
         } catch {
           // Ignore malformed events
         }
@@ -234,7 +390,6 @@ export default function Home() {
 
       eventSource.onerror = () => {
         eventSource.close();
-        // If we haven't transitioned to a final phase, mark as error
         setPhase((prev) => {
           if (prev === "debating") return "error";
           return prev;
@@ -246,52 +401,6 @@ export default function Home() {
     }
   }, [requirements, settings, apiBase]);
 
-  const submitPriorities = useCallback(async () => {
-    if (!sessionId) return;
-
-    setPhase("finalizing");
-
-    try {
-      const res = await fetch(`${apiBase}/api/debate/priorities`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          ...priorities,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed to submit priorities: ${res.statusText}`);
-      }
-
-      const data = await res.json();
-      setFinalVerdict(data.final_verdict);
-      setPhase("complete");
-    } catch (err) {
-      setPhase("error");
-      setError(err instanceof Error ? err.message : "Unknown error");
-    }
-  }, [sessionId, priorities, apiBase]);
-
-  const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      // Read file contents locally
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target?.result;
-        if (typeof text === "string") {
-          setRequirements(text);
-        }
-      };
-      reader.readAsText(file);
-    },
-    []
-  );
-
   const handleAlignmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userAlignmentResponse.trim() || !sessionId) return;
@@ -299,7 +408,6 @@ export default function Home() {
     setAlignmentSubmitting(true);
     setError(null);
 
-    // Optimistically add user response to local messages state for immediate display
     const userMsg = {
       agent_name: "User",
       agent_emoji: "👤",
@@ -326,16 +434,21 @@ export default function Home() {
       }
 
       const data = await res.json();
-      
+
       if (data.status === "complete") {
         setFinalVerdict(data.final_verdict);
         setPhase("complete");
+        setActiveAgent(null);
       } else {
-        // Fetch the full messages list from the backend to sync the Judge's next question
         const statusRes = await fetch(`${apiBase}/api/debate/status/${sessionId}`);
         if (statusRes.ok) {
           const statusData = await statusRes.json();
           setMessages(statusData.messages || []);
+          const logs = statusData.thinking_updates?.map((u: any) => ({
+            ...u,
+            timestamp: u.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+          })) || [];
+          setThinkingUpdates(logs);
         }
       }
     } catch (err) {
@@ -345,19 +458,36 @@ export default function Home() {
     }
   };
 
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result;
+        if (typeof text === "string") {
+          setRequirements(text);
+        }
+      };
+      reader.readAsText(file);
+    },
+    []
+  );
+
   const resetAll = useCallback(() => {
     setPhase("input");
     setMessages([]);
+    setThinkingUpdates([]);
+    setActiveAgent(null);
+    setExpandedMessages({});
     setSessionId(null);
     setJudgeSynthesis("");
     setFinalVerdict("");
     setPriorities(DEFAULT_PRIORITIES);
-    setQuestionnaire(null);
     setUserAlignmentResponse("");
     setError(null);
   }, []);
-
-  /* ─── Helpers ───────────────────────────────────────────────────── */
 
   const getAgentClass = (name: string): string => {
     return AGENT_CLASS_MAP[name] || "judge";
@@ -368,9 +498,7 @@ export default function Home() {
     return Math.max(...messages.map((m) => m.round_number));
   };
 
-  const getStepState = (
-    stepPhases: AppPhase[]
-  ): "complete" | "active" | "pending" => {
+  const getStepState = (stepPhases: AppPhase[]): "complete" | "active" | "pending" => {
     if (stepPhases.includes(phase)) return "active";
     const phaseOrder: AppPhase[] = [
       "input",
@@ -385,8 +513,6 @@ export default function Home() {
     if (currentIdx > stepIdx) return "complete";
     return "pending";
   };
-
-  /* ─── Render ────────────────────────────────────────────────────── */
 
   return (
     <div className="app-container">
@@ -404,69 +530,28 @@ export default function Home() {
 
       {/* Step Indicators */}
       <div className="steps">
-        <StepIndicator
-          number={1}
-          label="Requirements"
-          state={getStepState(["input"])}
-        />
-        <div
-          className={`step__connector ${
-            getStepState(["input"]) === "complete"
-              ? "step__connector--active"
-              : ""
-          }`}
-        />
-        <StepIndicator
-          number={2}
-          label="Council Debate"
-          state={getStepState(["debating"])}
-        />
-        <div
-          className={`step__connector ${
-            getStepState(["debating"]) === "complete"
-              ? "step__connector--active"
-              : ""
-          }`}
-        />
-        <StepIndicator
-          number={3}
-          label="Your Priorities"
-          state={getStepState(["alignment_chat", "awaiting_priorities"])}
-        />
-        <div
-          className={`step__connector ${
-            getStepState(["awaiting_priorities"]) === "complete"
-              ? "step__connector--active"
-              : ""
-          }`}
-        />
-        <StepIndicator
-          number={4}
-          label="Final Verdict"
-          state={getStepState(["finalizing", "complete"])}
-        />
+        <StepIndicator number={1} label="Requirements" state={getStepState(["input"])} />
+        <div className={`step__connector ${getStepState(["input"]) === "complete" ? "step__connector--active" : ""}`} />
+        <StepIndicator number={2} label="Council Debate" state={getStepState(["debating"])} />
+        <div className={`step__connector ${getStepState(["debating"]) === "complete" ? "step__connector--active" : ""}`} />
+        <StepIndicator number={3} label="Your Priorities" state={getStepState(["alignment_chat", "awaiting_priorities"])} />
+        <div className={`step__connector ${getStepState(["awaiting_priorities"]) === "complete" ? "step__connector--active" : ""}`} />
+        <StepIndicator number={4} label="Final Verdict" state={getStepState(["finalizing", "complete"])} />
       </div>
 
       {/* Error Display */}
       {error && (
-        <div
-          className="status-bar"
-          style={{ borderColor: "var(--accent-tertiary)" }}
-        >
+        <div className="status-bar" style={{ borderColor: "var(--accent-tertiary)" }}>
           <div className="status-bar__dot status-bar__dot--error" />
           <span className="status-bar__text">Error: {error}</span>
-          <button className="btn btn--ghost" onClick={resetAll}>
-            Reset
-          </button>
+          <button className="btn btn--ghost" onClick={resetAll}>Reset</button>
         </div>
       )}
 
       {/* Phase 1: Input */}
       {phase === "input" && (
         <div className="input-section glass-card">
-          <label className="input-section__label" htmlFor="requirements-input">
-            📋 Project Requirements
-          </label>
+          <label className="input-section__label" htmlFor="requirements-input">📋 Project Requirements</label>
           <textarea
             id="requirements-input"
             className="input-section__textarea"
@@ -493,15 +578,10 @@ export default function Home() {
                 accept=".txt,.md,.pdf,.doc,.docx"
                 onChange={handleFileUpload}
               />
-              <label htmlFor="file-upload-input" className="file-upload__label">
-                📄 Upload File
-              </label>
+              <label htmlFor="file-upload-input" className="file-upload__label">📄 Upload File</label>
             </div>
 
-            <button
-              className="btn btn--ghost"
-              onClick={() => setShowSettings(!showSettings)}
-            >
+            <button className="btn btn--ghost" onClick={() => setShowSettings(!showSettings)}>
               ⚙️ {showSettings ? "Hide" : "API"} Settings
             </button>
           </div>
@@ -509,9 +589,7 @@ export default function Home() {
           {/* BYOK Settings Panel */}
           {showSettings && (
             <div className="settings-panel">
-              <h3 className="settings-panel__title">
-                🔑 Bring Your Own Key (BYOK)
-              </h3>
+              <h3 className="settings-panel__title">🔑 Bring Your Own Key (BYOK)</h3>
               <div className="settings-grid">
                 <div className="settings-field">
                   <label className="settings-field__label">API Base URL</label>
@@ -519,9 +597,7 @@ export default function Home() {
                     type="text"
                     className="settings-field__input"
                     value={settings.api_url}
-                    onChange={(e) =>
-                      setSettings({ ...settings, api_url: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, api_url: e.target.value })}
                     placeholder="http://localhost:8000"
                   />
                 </div>
@@ -530,9 +606,7 @@ export default function Home() {
                   <select
                     className="settings-field__select"
                     value={settings.provider}
-                    onChange={(e) =>
-                      setSettings({ ...settings, provider: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, provider: e.target.value })}
                   >
                     <option value="groq">Groq</option>
                     <option value="openai">OpenAI</option>
@@ -545,23 +619,17 @@ export default function Home() {
                     type="text"
                     className="settings-field__input"
                     value={settings.model}
-                    onChange={(e) =>
-                      setSettings({ ...settings, model: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, model: e.target.value })}
                     placeholder="llama-3.3-70b-versatile"
                   />
                 </div>
                 <div className="settings-field">
-                  <label className="settings-field__label">
-                    API Key (optional override)
-                  </label>
+                  <label className="settings-field__label">API Key (optional override)</label>
                   <input
                     type="password"
                     className="settings-field__input"
                     value={settings.api_key}
-                    onChange={(e) =>
-                      setSettings({ ...settings, api_key: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, api_key: e.target.value })}
                     placeholder="sk-..."
                   />
                 </div>
@@ -571,93 +639,132 @@ export default function Home() {
         </div>
       )}
 
-      {/* Phase 2: Debate Stream */}
-      {(phase === "debating" ||
-        phase === "alignment_chat" ||
-        phase === "awaiting_priorities" ||
-        phase === "finalizing" ||
-        phase === "complete") &&
-        messages.length > 0 && (
-          <div className="debate-stream">
-            <div className="debate-stream__header">
-              <h2 className="debate-stream__title">🏛️ Council Debate</h2>
-              {phase === "debating" && (
-                <div className="debate-stream__round-badge">
+      {/* Split Dashboard (Phase 2 & onwards) */}
+      {phase !== "input" && (
+        <div className="swarm-dashboard">
+          {/* Left Side: Swarm Visualizer & Message Stream */}
+          <div className="swarm-dashboard__left">
+            <div className="glass-card swarm-graph-card">
+              <h3 className="swarm-graph-card__title">📡 Live Swarm Topology</h3>
+              <SwarmGraph activeAgent={activeAgent} />
+            </div>
+
+            {messages.length > 0 && (
+              <div className="debate-stream">
+                <div className="debate-stream__header">
+                  <h2 className="debate-stream__title">🏛️ Council Debate Feed</h2>
+                  {phase === "debating" && (
+                    <div className="debate-stream__round-badge">
+                      <div className="loading-dots">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      Round {getCurrentRound() || 1}
+                    </div>
+                  )}
+                  {phase !== "debating" && (
+                    <div className="debate-stream__round-badge">✅ Debate Complete</div>
+                  )}
+                </div>
+
+                {phase === "debating" && (
+                  <div className="status-bar">
+                    <div className="status-bar__dot status-bar__dot--active" />
+                    <span className="status-bar__text">
+                      Swarm debating... ({messages.length} messages)
+                    </span>
+                  </div>
+                )}
+
+                <div className="debate-stream__messages">
+                  {messages
+                    .filter((m) => m.round_number !== 99 && m.round_number !== 100)
+                    .map((msg, idx) => {
+                      const isExpanded = !!expandedMessages[idx];
+                      const summary = getSummary(msg.content);
+                      const showToggle = msg.content.length > 160;
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`agent-message agent-message--${getAgentClass(msg.agent_name)}`}
+                        >
+                          <div className="agent-message__header">
+                            <div className="agent-message__avatar">{msg.agent_emoji}</div>
+                            <div className="agent-message__info">
+                              <div className="agent-message__name">{msg.agent_name}</div>
+                              <div className="agent-message__title">{msg.agent_title}</div>
+                            </div>
+                            <div className="agent-message__round">
+                              {msg.round_number === 0 ? "Initial Proposal" : `Round ${msg.round_number}`}
+                            </div>
+                          </div>
+                          <div className="agent-message__content">
+                            {isExpanded ? (
+                              <SafeMarkdown content={msg.content} />
+                            ) : (
+                              <p className="agent-message__summary">{summary}</p>
+                            )}
+
+                            {showToggle && (
+                              <button
+                                className="agent-message__toggle-btn"
+                                onClick={() => toggleMessage(idx)}
+                              >
+                                {isExpanded ? "Collapse arguments ▲" : "Show full analysis ▼"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {phase === "debating" && (
+                  <div className="loading-indicator">
+                    <div className="loading-dots">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <span>Swarm agents are computing...</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right Side: Activity log ticker */}
+          <div className="swarm-dashboard__right glass-card thinking-log-card">
+            <h3 className="thinking-log-title">⚡ Swarm Activity Logs</h3>
+            <div className="thinking-log-stream">
+              {thinkingUpdates.length === 0 ? (
+                <div className="thinking-log-empty">
                   <div className="loading-dots">
                     <span />
                     <span />
                     <span />
                   </div>
-                  Round {getCurrentRound() || 1}
+                  <p>Bootstrapping Agent Swarm...</p>
                 </div>
-              )}
-              {phase !== "debating" && (
-                <div className="debate-stream__round-badge">
-                  ✅ Debate Complete
-                </div>
-              )}
-            </div>
-
-            {/* Status Bar */}
-            {phase === "debating" && (
-              <div className="status-bar">
-                <div className="status-bar__dot status-bar__dot--active" />
-                <span className="status-bar__text">
-                  Agents are debating... ({messages.length} messages)
-                </span>
-              </div>
-            )}
-
-            {/* Messages */}
-            <div className="debate-stream__messages">
-              {messages
-                .filter((m) => m.round_number !== 99 && m.round_number !== 100)
-                .map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`agent-message agent-message--${getAgentClass(
-                      msg.agent_name
-                    )}`}
-                  >
-                    <div className="agent-message__header">
-                      <div className="agent-message__avatar">
-                        {msg.agent_emoji}
-                      </div>
-                      <div className="agent-message__info">
-                        <div className="agent-message__name">
-                          {msg.agent_name}
-                        </div>
-                        <div className="agent-message__title">
-                          {msg.agent_title}
-                        </div>
-                      </div>
-                      <div className="agent-message__round">
-                        {msg.round_number === 0
-                          ? "Initial Proposal"
-                          : `Round ${msg.round_number}`}
-                      </div>
-                    </div>
-                    <div className="agent-message__content">
-                      <SafeMarkdown content={msg.content} />
-                    </div>
+              ) : (
+                thinkingUpdates.map((update, idx) => (
+                  <div key={idx} className="thinking-log-item">
+                    <span className="thinking-log-time">[{update.timestamp || ""}]</span>
+                    <span className="thinking-log-emoji">{update.agent_emoji}</span>
+                    <span className="thinking-log-text">
+                      <strong>{update.agent_name}</strong>: {update.status_text}
+                    </span>
                   </div>
-                ))}
-              <div ref={messagesEndRef} />
+                ))
+              )}
+              <div ref={logsEndRef} />
             </div>
-
-            {/* Loading indicator during debate */}
-            {phase === "debating" && (
-              <div className="loading-indicator">
-                <div className="loading-dots">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <span>Agents are thinking...</span>
-              </div>
-            )}
           </div>
-        )}
+        </div>
+      )}
 
       {/* Judge Synthesis Display */}
       {judgeSynthesis && phase !== "input" && (
@@ -667,9 +774,7 @@ export default function Home() {
               <div className="agent-message__avatar">⚖️</div>
               <div className="agent-message__info">
                 <div className="agent-message__name">The Judge</div>
-                <div className="agent-message__title">
-                  Synthesized Architectures
-                </div>
+                <div className="agent-message__title">Synthesized Architectures</div>
               </div>
             </div>
             <div className="architecture-card__content">
@@ -682,9 +787,7 @@ export default function Home() {
       {/* Phase 3: Conversational Alignment Chat */}
       {phase === "alignment_chat" && (
         <div className="priorities-section glass-card">
-          <h2 className="priorities-section__title">
-            ⚖️ Clarify Priorities with the Judge
-          </h2>
+          <h2 className="priorities-section__title">⚖️ Clarify Priorities with the Judge</h2>
           <p className="priorities-section__subtitle" style={{ marginBottom: "1.5rem" }}>
             The Judge has initiated a conversational alignment session to resolve key trade-offs. Type your answers to the Judge in the box below.
           </p>
@@ -719,9 +822,7 @@ export default function Home() {
             <span />
             <span />
           </div>
-          <span>
-            The Judge is optimizing the tech stack based on your priorities...
-          </span>
+          <span>The Judge is optimizing the tech stack based on your priorities...</span>
         </div>
       )}
 
@@ -732,9 +833,7 @@ export default function Home() {
             <div className="agent-message__avatar">🏆</div>
             <div className="agent-message__info">
               <div className="agent-message__name">Final Verdict</div>
-              <div className="agent-message__title">
-                Optimized for your priorities
-              </div>
+              <div className="agent-message__title">Optimized for your priorities</div>
             </div>
           </div>
           <div className="final-verdict__content">
@@ -742,19 +841,13 @@ export default function Home() {
           </div>
 
           <div style={{ marginTop: "2rem", textAlign: "center" }}>
-            <button className="btn btn--secondary" onClick={resetAll}>
-              🔄 Start a New Council
-            </button>
+            <button className="btn btn--secondary" onClick={resetAll}>🔄 Start a New Council</button>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-/* ═══════════════════════════════════════════════════════════════════════
-   Sub-Components
-   ═══════════════════════════════════════════════════════════════════════ */
 
 function StepIndicator({
   number,
@@ -767,9 +860,7 @@ function StepIndicator({
 }) {
   return (
     <div className={`step step--${state}`}>
-      <div className="step__number">
-        {state === "complete" ? "✓" : number}
-      </div>
+      <div className="step__number">{state === "complete" ? "✓" : number}</div>
       <span>{label}</span>
     </div>
   );

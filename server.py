@@ -174,12 +174,27 @@ async def stream_debate(session_id: str):
 
     async def event_generator():
         last_idx = 0
+        last_thinking_idx = 0
         while True:
+            # Send any new thinking updates
+            current_thinking = engine.state.thinking_updates
+            if len(current_thinking) > last_thinking_idx:
+                for update in current_thinking[last_thinking_idx:]:
+                    data = json.dumps({
+                        "type": "thinking",
+                        "agent_name": update.agent_name,
+                        "agent_emoji": update.agent_emoji,
+                        "status_text": update.status_text,
+                    })
+                    yield f"data: {data}\n\n"
+                last_thinking_idx = len(current_thinking)
+
             # Send any new messages
             current_messages = engine.state.messages
             if len(current_messages) > last_idx:
                 for msg in current_messages[last_idx:]:
                     data = json.dumps({
+                        "type": "message",
                         "agent_name": msg.agent_name,
                         "agent_emoji": msg.agent_emoji,
                         "agent_title": msg.agent_title,
@@ -234,6 +249,14 @@ async def get_debate_status(session_id: str):
         "messages": messages,
         "judge_synthesis": engine.state.judge_synthesis,
         "questionnaire": engine.state.questionnaire,
+        "thinking_updates": [
+            {
+                "agent_name": u.agent_name,
+                "agent_emoji": u.agent_emoji,
+                "status_text": u.status_text,
+            }
+            for u in engine.state.thinking_updates
+        ],
     }
 
 
