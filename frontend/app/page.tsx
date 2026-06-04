@@ -1,13 +1,13 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Float, Html } from "@react-three/drei";
+import { Float, Html, OrbitControls } from "@react-three/drei";
 import { motion, AnimatePresence } from "framer-motion";
 import * as THREE from "three";
 import SafeMarkdown from "./components/SafeMarkdown";
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Types
+   Types & Configurations
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface DebateMessage {
@@ -42,26 +42,22 @@ type AppPhase =
   | "complete"
   | "error";
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Constants
-   ═══════════════════════════════════════════════════════════════════════ */
-
 const AGENT_CLASS_MAP: Record<string, string> = {
   "The Veteran": "veteran",
   "The Scaler": "scaler",
   "The Pioneer": "pioneer",
   "The Mad Scientist": "mad-scientist",
   "The Judge": "judge",
-  System: "judge",
+  System: "system",
   User: "user",
 };
 
 const AGENT_COLORS: Record<string, string> = {
-  "The Veteran": "#8b9dc3",
-  "The Scaler": "#00d4aa",
-  "The Pioneer": "#ff6b6b",
-  "The Mad Scientist": "#ffa94d",
-  "The Judge": "#7c5cfc",
+  "The Veteran": "#8d98a6",
+  "The Scaler": "#6a8c7b",
+  "The Pioneer": "#c98276",
+  "The Mad Scientist": "#d4a373",
+  "The Judge": "#9c8a77",
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -88,7 +84,7 @@ function getSummary(content: string): string {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   3D Swarm Visualization Components
+   3D Swarm Components (Clay & Glass Theme)
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface AgentNodeProps {
@@ -98,67 +94,100 @@ interface AgentNodeProps {
   name: string;
   isActive: boolean;
   isJudge?: boolean;
+  onClick: () => void;
 }
 
-function AgentOrb({ position, color, isActive, isJudge, emoji, name }: AgentNodeProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const glowRef = useRef<THREE.Mesh>(null);
+function AgentOrb({ position, color, isActive, isJudge, emoji, name, onClick }: AgentNodeProps) {
+  const coreRef = useRef<THREE.Mesh>(null);
+  const outerGlassRef = useRef<THREE.Mesh>(null);
   const targetScale = isActive ? 1.4 : 1;
-  const baseSize = isJudge ? 0.5 : 0.35;
+  const baseSize = isJudge ? 0.45 : 0.32;
 
   useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.scale.lerp(
+    if (coreRef.current) {
+      coreRef.current.scale.lerp(
         new THREE.Vector3(targetScale, targetScale, targetScale),
-        0.08
+        0.1
       );
     }
-    if (glowRef.current) {
-      const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.15 + 1;
-      const glowScale = isActive ? targetScale * pulse * 1.8 : targetScale * 1.5;
-      glowRef.current.scale.lerp(
-        new THREE.Vector3(glowScale, glowScale, glowScale),
-        0.06
+    if (outerGlassRef.current) {
+      const pulse = Math.sin(state.clock.elapsedTime * 3) * 0.05 + 1.2;
+      const glassScale = isActive ? targetScale * pulse : targetScale * 1.2;
+      outerGlassRef.current.scale.lerp(
+        new THREE.Vector3(glassScale, glassScale, glassScale),
+        0.08
       );
-      (glowRef.current.material as THREE.MeshBasicMaterial).opacity = isActive ? 0.2 : 0.06;
     }
   });
 
   return (
-    <Float speed={isActive ? 4 : 1.5} rotationIntensity={0.1} floatIntensity={isActive ? 0.5 : 0.2}>
+    <Float speed={isActive ? 3.5 : 1.2} rotationIntensity={0.1} floatIntensity={isActive ? 0.45 : 0.15}>
       <group position={position}>
-        {/* Outer glow sphere */}
-        <mesh ref={glowRef}>
-          <sphereGeometry args={[baseSize * 2, 16, 16]} />
-          <meshBasicMaterial color={color} transparent opacity={0.06} />
-        </mesh>
-
-        {/* Main orb */}
-        <mesh ref={meshRef}>
+        {/* Outer glass sphere overlay */}
+        <mesh
+          ref={outerGlassRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          onPointerOver={() => {
+            document.body.style.cursor = "pointer";
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = "default";
+          }}
+        >
           <sphereGeometry args={[baseSize, 32, 32]} />
-          <meshStandardMaterial
+          <meshPhysicalMaterial
             color={color}
-            emissive={color}
-            emissiveIntensity={isActive ? 1.2 : 0.3}
-            roughness={0.2}
-            metalness={0.8}
             transparent
-            opacity={0.85}
+            opacity={isActive ? 0.45 : 0.15}
+            roughness={0.08}
+            transmission={0.85}
+            thickness={0.35}
+            clearcoat={1.0}
+            clearcoatRoughness={0.1}
           />
         </mesh>
 
-        {/* Agent label */}
+        {/* Inner solid clay core */}
+        <mesh ref={coreRef}>
+          <sphereGeometry args={[baseSize * 0.78, 32, 32]} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.65}
+            metalness={0.02}
+          />
+        </mesh>
+
+        {/* Shadow dot underneath representing ambient occlusion */}
+        <mesh position={[0, -baseSize * 1.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[baseSize * 1.2, baseSize * 1.2]} />
+          <meshBasicMaterial
+            color="#5a5046"
+            transparent
+            opacity={isActive ? 0.18 : 0.06}
+            depthWrite={false}
+          />
+        </mesh>
+
+        {/* Agent label badge */}
         <Html center distanceFactor={8} style={{ pointerEvents: "none" }}>
           <div
             style={{
               textAlign: "center",
-              color: isActive ? color : "#8080a8",
-              fontFamily: "'Inter', sans-serif",
+              color: isActive ? "#2b2927" : "#6e6a64",
+              fontFamily: "'Outfit', sans-serif",
               fontWeight: isActive ? 700 : 500,
               fontSize: isJudge ? "11px" : "10px",
               whiteSpace: "nowrap",
-              textShadow: isActive ? `0 0 12px ${color}` : "none",
-              transform: "translateY(28px)",
+              padding: "4px 10px",
+              background: "rgba(255, 255, 255, 0.88)",
+              border: `1px solid ${isActive ? color : "rgba(138, 115, 85, 0.12)"}`,
+              borderRadius: "20px",
+              boxShadow: "0 6px 16px rgba(120, 110, 95, 0.06)",
+              transform: "translateY(38px)",
+              transition: "all 0.3s ease",
             }}
           >
             <div style={{ fontSize: isJudge ? "20px" : "16px", marginBottom: 2 }}>{emoji}</div>
@@ -170,7 +199,47 @@ function AgentOrb({ position, color, isActive, isJudge, emoji, name }: AgentNode
   );
 }
 
-function ParticleLink({
+function DataPacket({
+  start,
+  end,
+  speed,
+  color,
+}: {
+  start: [number, number, number];
+  end: [number, number, number];
+  speed: number;
+  color: string;
+}) {
+  const ref = useRef<THREE.Mesh>(null);
+  const phase = useMemo(() => Math.random() * 5, []);
+
+  useFrame((state) => {
+    if (ref.current) {
+      const time = state.clock.elapsedTime + phase;
+      const t = (time * speed) % 1.0;
+      ref.current.position.set(
+        start[0] + (end[0] - start[0]) * t,
+        start[1] + (end[1] - start[1]) * t,
+        start[2] + (end[2] - start[2]) * t
+      );
+    }
+  });
+
+  return (
+    <mesh ref={ref}>
+      <sphereGeometry args={[0.045, 12, 12]} />
+      <meshStandardMaterial
+        color={color}
+        roughness={0.4}
+        metalness={0.05}
+        emissive={color}
+        emissiveIntensity={0.5}
+      />
+    </mesh>
+  );
+}
+
+function ConnectionLine({
   start,
   end,
   isActive,
@@ -189,30 +258,43 @@ function ParticleLink({
       new THREE.Vector3(...end),
     ]);
     const material = new THREE.LineBasicMaterial({
-      color: "#4040a0",
+      color: "#8a7355",
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.12,
     });
     return new THREE.Line(geometry, material);
   }, [start, end]);
 
   useFrame(() => {
     const mat = lineObj.material as THREE.LineBasicMaterial;
-    const targetOpacity = isActive ? 0.6 : 0.1;
-    mat.opacity += (targetOpacity - mat.opacity) * 0.05;
-    mat.color.set(isActive ? color : "#4040a0");
+    const targetOpacity = isActive ? 0.55 : 0.12;
+    mat.opacity += (targetOpacity - mat.opacity) * 0.08;
+    mat.color.set(isActive ? color : "#8a7355");
   });
 
-  return <primitive ref={lineRef} object={lineObj} />;
+  return (
+    <group>
+      <primitive ref={lineRef} object={lineObj} />
+      <DataPacket start={start} end={end} speed={isActive ? 0.55 : 0.2} color={isActive ? color : "#8a7355"} />
+    </group>
+  );
 }
 
-function SwarmScene({ activeAgent }: { activeAgent: string | null }) {
+function SwarmScene({
+  activeAgent,
+  setActiveAgent,
+}: {
+  activeAgent: string | null;
+  setActiveAgent: (name: string | null) => void;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+
   const agents = [
-    { name: "The Veteran", emoji: "🏛️", pos: [-2.2, 1.2, 0] as [number, number, number], color: "#8b9dc3" },
-    { name: "The Scaler", emoji: "🚀", pos: [2.2, 1.2, 0] as [number, number, number], color: "#00d4aa" },
-    { name: "The Mad Scientist", emoji: "🧪", pos: [2.2, -1.2, 0] as [number, number, number], color: "#ffa94d" },
-    { name: "The Pioneer", emoji: "⚡", pos: [-2.2, -1.2, 0] as [number, number, number], color: "#ff6b6b" },
-    { name: "The Judge", emoji: "⚖️", pos: [0, 0, 0.5] as [number, number, number], color: "#7c5cfc", isJudge: true },
+    { name: "The Veteran", emoji: "🏛️", pos: [-2.5, 1.3, 0] as [number, number, number], color: "#8d98a6" },
+    { name: "The Scaler", emoji: "🚀", pos: [2.5, 1.3, 0] as [number, number, number], color: "#6a8c7b" },
+    { name: "The Mad Scientist", emoji: "🧪", pos: [2.5, -1.3, 0] as [number, number, number], color: "#d4a373" },
+    { name: "The Pioneer", emoji: "⚡", pos: [-2.5, -1.3, 0] as [number, number, number], color: "#c98276" },
+    { name: "The Judge", emoji: "⚖️", pos: [0, 0, 0.4] as [number, number, number], color: "#9c8a77", isJudge: true },
   ];
 
   const connections = [
@@ -220,24 +302,27 @@ function SwarmScene({ activeAgent }: { activeAgent: string | null }) {
     { from: 0, to: 4 }, { from: 1, to: 4 }, { from: 2, to: 4 }, { from: 3, to: 4 },
   ];
 
-  return (
-    <>
-      <ambientLight intensity={0.15} />
-      <pointLight position={[0, 0, 5]} intensity={0.8} color="#7c5cfc" />
-      <pointLight position={[-3, 2, 3]} intensity={0.3} color="#00d4aa" />
-      <pointLight position={[3, -2, 3]} intensity={0.3} color="#ff6b6b" />
+  useFrame((state) => {
+    if (groupRef.current) {
+      // Gentle floating spin of the entire system
+      groupRef.current.rotation.y = state.clock.elapsedTime * 0.04;
+      groupRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.02) * 0.05;
+    }
+  });
 
+  return (
+    <group ref={groupRef}>
       {connections.map((conn, i) => {
         const a = agents[conn.from];
         const b = agents[conn.to];
         const isActive = activeAgent === a.name || activeAgent === b.name;
         return (
-          <ParticleLink
+          <ConnectionLine
             key={i}
             start={a.pos}
             end={b.pos}
             isActive={isActive}
-            color={isActive ? (activeAgent === a.name ? a.color : b.color) : "#4040a0"}
+            color={isActive ? (activeAgent === a.name ? a.color : b.color) : "#8a7355"}
           />
         );
       })}
@@ -251,9 +336,10 @@ function SwarmScene({ activeAgent }: { activeAgent: string | null }) {
           name={agent.name}
           isActive={activeAgent === agent.name}
           isJudge={agent.isJudge}
+          onClick={() => setActiveAgent(activeAgent === agent.name ? null : agent.name)}
         />
       ))}
-    </>
+    </group>
   );
 }
 
@@ -262,40 +348,40 @@ function SwarmScene({ activeAgent }: { activeAgent: string | null }) {
    ═══════════════════════════════════════════════════════════════════════ */
 
 const messageVariants = {
-  hidden: { opacity: 0, x: -20, scale: 0.97 },
+  hidden: { opacity: 0, x: -16, scale: 0.98 },
   visible: {
     opacity: 1,
     x: 0,
     scale: 1,
-    transition: { type: "spring" as const, stiffness: 300, damping: 24 },
+    transition: { type: "spring" as const, stiffness: 280, damping: 26 },
   },
   exit: { opacity: 0, x: -10, transition: { duration: 0.15 } },
 };
 
 const logVariants = {
-  hidden: { opacity: 0, x: -10 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.2 } },
+  hidden: { opacity: 0, x: -8 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.22 } },
 };
 
 const overlayVariants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.3 } },
+  visible: { opacity: 1, transition: { duration: 0.25 } },
   exit: { opacity: 0, transition: { duration: 0.2 } },
 };
 
 const cardPopVariants = {
-  hidden: { opacity: 0, scale: 0.9, y: 30 },
+  hidden: { opacity: 0, scale: 0.92, y: 20 },
   visible: {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: "spring" as const, stiffness: 260, damping: 20 },
+    transition: { type: "spring" as const, stiffness: 250, damping: 22 },
   },
   exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.15 } },
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Main Component
+   Main React Component
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function Home() {
@@ -393,7 +479,6 @@ export default function Home() {
           }
 
           if (msg.type === "interjection") {
-            // Judge has a mid-debate question
             setPhase("waiting_for_mid_debate_input");
             setInterjectionQuestion(msg.question);
             setActiveAgent("The Judge");
@@ -402,7 +487,6 @@ export default function Home() {
 
           if (msg.type === "status") {
             if (msg.status === "debating") {
-              // Debate resumed after interjection
               setPhase("debating");
               setInterjectionQuestion("");
               setInterjectionAnswer("");
@@ -469,8 +553,6 @@ export default function Home() {
       if (!res.ok) {
         throw new Error(`Failed to submit interjection: ${res.statusText}`);
       }
-
-      // The SSE stream will handle the status transition back to "debating"
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -611,15 +693,31 @@ export default function Home() {
 
   return (
     <div className="app-container">
+      {/* Fullscreen 3D Swarm Backdrop */}
+      <div className="fullscreen-canvas-container">
+        <Suspense fallback={null}>
+          <Canvas
+            camera={{ position: [0, 0, 7.8], fov: 45 }}
+            style={{ background: "transparent" }}
+            dpr={[1, 2]}
+          >
+            <ambientLight intensity={0.65} color="#fffcf0" />
+            <directionalLight position={[10, 15, 10]} intensity={1.5} color="#fffaf0" />
+            <pointLight position={[-10, -15, -10]} intensity={0.5} color="#e0f2fe" />
+            <SwarmScene activeAgent={activeAgent} setActiveAgent={setActiveAgent} />
+            <OrbitControls enableZoom={true} enablePan={false} maxDistance={12} minDistance={4} />
+          </Canvas>
+        </Suspense>
+      </div>
+
       {/* Header */}
       <header className="header">
         <div className="header__logo">
-          <span className="header__icon">🤖</span>
+          <span className="header__icon">🏛️</span>
           <h1 className="header__title">Agent Swarm</h1>
         </div>
         <p className="header__subtitle">
-          4 AI agents with radically different perspectives debate your project
-          to find the perfect tech stack &amp; architecture.
+          Four expert agents debate project choices in a structured council, refined by the Judge.
         </p>
       </header>
 
@@ -651,7 +749,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Phase 1: Input */}
+      {/* Phase 1: Input Section */}
       <AnimatePresence>
         {phase === "input" && (
           <motion.div
@@ -661,11 +759,11 @@ export default function Home() {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.4 }}
           >
-            <label className="input-section__label" htmlFor="requirements-input">📋 Project Requirements</label>
+            <label className="input-section__label" htmlFor="requirements-input">📋 Project Requirements & Goals</label>
             <textarea
               id="requirements-input"
               className="input-section__textarea"
-              placeholder={`Describe your project in detail. For example:\n\n"I want to build a real-time collaborative document editor like Notion, supporting up to 10,000 concurrent users. It needs rich text editing, commenting, version history, and real-time cursors. We have a team of 3 full-stack developers with experience in React and Python."`}
+              placeholder={`Describe your project. For example:\n\n"I want to build a real-time collaborative document editor like Notion, supporting up to 10,000 concurrent users. It needs rich text editing, commenting, version history, and real-time cursors. We have a team of 3 full-stack developers with experience in React and Python."`}
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
             />
@@ -696,7 +794,7 @@ export default function Home() {
               </button>
             </div>
 
-            {/* BYOK Settings Panel */}
+            {/* API Settings Panel */}
             <AnimatePresence>
               {showSettings && (
                 <motion.div
@@ -705,7 +803,7 @@ export default function Home() {
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                 >
-                  <h3 className="settings-panel__title">🔑 Bring Your Own Key (BYOK)</h3>
+                  <h3 className="settings-panel__title">🔑 API Settings</h3>
                   <div className="settings-grid">
                     <div className="settings-field">
                       <label className="settings-field__label">API Base URL</label>
@@ -740,7 +838,7 @@ export default function Home() {
                       />
                     </div>
                     <div className="settings-field">
-                      <label className="settings-field__label">API Key (optional override)</label>
+                      <label className="settings-field__label">API Key (optional)</label>
                       <input
                         type="password"
                         className="settings-field__input"
@@ -760,32 +858,54 @@ export default function Home() {
       {/* Split Dashboard (Phase 2 & onwards) */}
       {phase !== "input" && (
         <div className="swarm-dashboard">
-          {/* Left Side: 3D Viz + Debate Feed */}
+          {/* Left Side: Activity Logs */}
           <div className="swarm-dashboard__left">
-            {/* 3D Canvas */}
-            <div className="canvas-container">
-              <div className="canvas-title">
-                <span className="dot" />
-                Live Swarm Topology
+            <div className="activity-log">
+              <div className="activity-log__header">
+                <h3 className="activity-log__title">⚡ Swarm Activity Logs</h3>
               </div>
-              <Suspense fallback={null}>
-                <Canvas
-                  camera={{ position: [0, 0, 6], fov: 50 }}
-                  style={{ background: "transparent" }}
-                  dpr={[1, 2]}
-                >
-                  <SwarmScene activeAgent={activeAgent} />
-                </Canvas>
-              </Suspense>
+              <div className="activity-log__stream">
+                {thinkingUpdates.length === 0 ? (
+                  <div className="activity-log__empty">
+                    <div className="loading-dots">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <p>Bootstrapping Agent Swarm...</p>
+                  </div>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {thinkingUpdates.map((update, idx) => (
+                      <motion.div
+                        key={idx}
+                        className="log-item"
+                        variants={logVariants}
+                        initial="hidden"
+                        animate="visible"
+                      >
+                        <span className="log-item__time">[{update.timestamp || ""}]</span>
+                        <span className="log-item__emoji">{update.agent_emoji}</span>
+                        <span className="log-item__text">
+                          <strong>{update.agent_name}</strong>: {update.status_text}
+                        </span>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                )}
+                <div ref={logsEndRef} />
+              </div>
             </div>
+          </div>
 
-            {/* Debate Feed (scrollable) */}
+          {/* Right Side: Council Debate Feed */}
+          <div className="swarm-dashboard__main">
             <div className="debate-feed">
               <div className="debate-feed__header">
                 <span className="debate-feed__title">🏛️ Council Debate Feed</span>
                 {(phase === "debating" || phase === "waiting_for_mid_debate_input") && (
                   <div className="debate-feed__badge">
-                    <div className="loading-dots">
+                    <div className="loading-dots" style={{ marginRight: 6 }}>
                       <span />
                       <span />
                       <span />
@@ -794,7 +914,7 @@ export default function Home() {
                   </div>
                 )}
                 {phase !== "debating" && phase !== "waiting_for_mid_debate_input" && messages.length > 0 && (
-                  <div className="debate-feed__badge">✅ Debate Complete</div>
+                  <div className="debate-feed__badge">✅ Complete</div>
                 )}
               </div>
 
@@ -802,7 +922,7 @@ export default function Home() {
                 <div className="status-bar">
                   <div className="status-bar__dot status-bar__dot--active" />
                   <span className="status-bar__text">
-                    Swarm debating... ({messages.filter((m) => m.round_number <= 3).length} messages)
+                    Swarm actively debating ({messages.filter((m) => m.round_number <= 3).length} messages)
                   </span>
                 </div>
               )}
@@ -871,48 +991,10 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* Right Side: Activity Log */}
-          <div className="activity-log">
-            <div className="activity-log__header">
-              <h3 className="activity-log__title">⚡ Swarm Activity Logs</h3>
-            </div>
-            <div className="activity-log__stream">
-              {thinkingUpdates.length === 0 ? (
-                <div className="activity-log__empty">
-                  <div className="loading-dots">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <p>Bootstrapping Agent Swarm...</p>
-                </div>
-              ) : (
-                <AnimatePresence initial={false}>
-                  {thinkingUpdates.map((update, idx) => (
-                    <motion.div
-                      key={idx}
-                      className="log-item"
-                      variants={logVariants}
-                      initial="hidden"
-                      animate="visible"
-                    >
-                      <span className="log-item__time">[{update.timestamp || ""}]</span>
-                      <span className="log-item__emoji">{update.agent_emoji}</span>
-                      <span className="log-item__text">
-                        <strong>{update.agent_name}</strong>: {update.status_text}
-                      </span>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Mid-Debate Interjection Overlay */}
+      {/* Mid-Debate Interjection Dialog Overlay */}
       <AnimatePresence>
         {phase === "waiting_for_mid_debate_input" && interjectionQuestion && (
           <motion.div
@@ -930,13 +1012,13 @@ export default function Home() {
               exit="exit"
             >
               <div className="interjection-card__emoji">⚖️</div>
-              <div className="interjection-card__title">The Judge needs your input</div>
+              <div className="interjection-card__title">The Judge Queries Your Preferences</div>
               <div className="interjection-card__question">{interjectionQuestion}</div>
               <form className="interjection-card__form" onSubmit={handleInterjectionSubmit}>
                 <input
                   className="interjection-card__input"
                   type="text"
-                  placeholder="Type your answer..."
+                  placeholder="Provide your input to direct the swarm..."
                   value={interjectionAnswer}
                   onChange={(e) => setInterjectionAnswer(e.target.value)}
                   disabled={interjectionSubmitting}
@@ -947,7 +1029,7 @@ export default function Home() {
                   className="btn btn--primary"
                   disabled={interjectionSubmitting || !interjectionAnswer.trim()}
                 >
-                  {interjectionSubmitting ? "Sending..." : "Answer"}
+                  {interjectionSubmitting ? "Sending..." : "Submit Answers"}
                 </button>
               </form>
             </motion.div>
@@ -955,7 +1037,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Judge Synthesis Display */}
+      {/* Judge Synthesis Section */}
       {judgeSynthesis && phase !== "input" && (
         <motion.div
           className="architecture-section"
@@ -994,8 +1076,8 @@ export default function Home() {
           <form onSubmit={handleAlignmentSubmit} style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
             <input
               type="text"
-              className="settings-field__input"
-              style={{ flex: 1, height: "45px", padding: "0.75rem 1rem", fontSize: "0.95rem" }}
+              className="interjection-card__input"
+              style={{ flex: 1, height: "45px" }}
               placeholder="Clarify your requirements for the Judge..."
               value={userAlignmentResponse}
               onChange={(e) => setUserAlignmentResponse(e.target.value)}
@@ -1007,13 +1089,13 @@ export default function Home() {
               style={{ height: "45px", padding: "0 1.5rem" }}
               disabled={alignmentSubmitting || !userAlignmentResponse.trim()}
             >
-              {alignmentSubmitting ? "Sending..." : "Send"}
+              {alignmentSubmitting ? "Sending..." : "Send Clarification"}
             </button>
           </form>
         </motion.div>
       )}
 
-      {/* Finalizing Indicator */}
+      {/* Finalizing Optimizer State */}
       {phase === "finalizing" && (
         <div className="loading-indicator" style={{ padding: "3rem" }}>
           <div className="loading-dots">
@@ -1025,7 +1107,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Phase 4: Final Verdict */}
+      {/* Phase 4: Final Verdict Output */}
       {phase === "complete" && finalVerdict && (
         <motion.div
           className="final-verdict"
