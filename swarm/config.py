@@ -7,6 +7,9 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 from dotenv import load_dotenv
+from agentscope.model import OpenAIChatModel, AnthropicChatModel
+from agentscope.credential import OpenAICredential, AnthropicCredential
+from agentscope.model._base import ChatModelBase
 
 load_dotenv()
 
@@ -20,6 +23,39 @@ class LLMConfig:
     temperature: float = 0.7
     max_tokens: int = 2048
     fallback_model: Optional[str] = None
+
+    def get_agentscope_model(self) -> ChatModelBase:
+        """Return an initialized AgentScope ChatModelBase instance."""
+        if self.provider == "anthropic":
+            cred = AnthropicCredential(api_key=self.api_key)
+            return AnthropicChatModel(
+                credential=cred,
+                model=self.model,
+                parameters=AnthropicChatModel.Parameters(
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+            )
+        
+        # OpenAI, Groq, Mistral use OpenAI compatible endpoints
+        base_url = None
+        if self.provider == "groq":
+            base_url = "https://api.groq.com/openai/v1"
+        elif self.provider == "mistral":
+            base_url = "https://api.mistral.ai/v1"
+            
+        cred = OpenAICredential(
+            api_key=self.api_key,
+            base_url=base_url
+        )
+        return OpenAIChatModel(
+            credential=cred,
+            model=self.model,
+            parameters=OpenAIChatModel.Parameters(
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+        )
 
 
 @dataclass

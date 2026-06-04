@@ -24,10 +24,12 @@
   </p>
 
   <p>
-    <a href="https://github.com/yourusername/TechHubAI/stargazers"><img src="https://img.shields.io/github/stars/yourusername/TechHubAI?style=for-the-badge&color=ffd700&logo=github" alt="Stars"></a>
-    <a href="https://github.com/yourusername/TechHubAI/network/members"><img src="https://img.shields.io/github/forks/yourusername/TechHubAI?style=for-the-badge&color=0052cc&logo=github" alt="Forks"></a>
-    <a href="https://github.com/yourusername/TechHubAI/issues"><img src="https://img.shields.io/github/issues/yourusername/TechHubAI?style=for-the-badge&color=red&logo=github" alt="Issues"></a>
-    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-success?style=for-the-badge&logo=opensourceinitiative" alt="License"></a>
+    <img src="https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=next.js" alt="Next.js">
+    <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
+    <img src="https://img.shields.io/badge/Framer_Motion-0055FF?style=for-the-badge&logo=framer&logoColor=white" alt="Framer Motion">
+    <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+    <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
+    <img src="https://img.shields.io/badge/Agentic_Framework-AgentScope-FF4B4B?style=for-the-badge" alt="AgentScope">
   </p>
 </div>
 
@@ -80,30 +82,17 @@ Whether you are evaluating model reasoning capabilities, researching complex top
 
 ## 🏗️ The Swarm Architecture
 
-The core of TechHubAI is its Swarm Engine. It operates on a hierarchical multi-agent framework:
+The core of TechHubAI is powered by **AgentScope**, providing a robust, multi-agent foundation seamlessly integrated with our custom state machine. It operates on a hierarchical, multi-agent system designed to simulate a structured debate.
 
-```mermaid
-graph TD
-    User([User]) --> |Topic & Config| Frontend(Next.js Client)
-    Frontend --> |Start Debate| Backend(FastAPI Server)
-    Backend --> Supervisor[Supervisor Agent]
-    
-    subgraph Swarm Debate Engine
-        Supervisor --> |"Coordinates & Summarizes"| DebateRound
-        DebateRound --> Primary[Primary Agent]
-        DebateRound --> Secondary[Secondary Agent]
-        Primary -.-> |"Arguments"| Secondary
-        Secondary -.-> |"Counter-Arguments"| Primary
-    end
-    
-    Primary --> Provider1{LLM Provider}
-    Secondary --> Provider2{LLM Provider}
-    Supervisor --> Provider3{LLM Provider}
-    
-    Provider1 -.-> |Stream| Frontend
-    Provider2 -.-> |Stream| Frontend
-    Provider3 -.-> |Stream| Frontend
-```
+Here is how the architecture flows from start to finish:
+
+1. **User Input & Configuration**: It begins in the Next.js frontend, where you define the debate topic and configure the personas and models for each agent.
+2. **The Supervisor Agent**: Once the debate starts, the FastAPI backend hands control over to the **Supervisor Agent**. The Supervisor acts as the moderator—it oversees the debate rounds and is ultimately responsible for synthesizing the arguments into a final conclusion.
+3. **The Debaters (Primary & Secondary)**: The core of the debate happens between the **Primary Agent** and the **Secondary Agent**. 
+   - The Primary Agent kicks things off by formulating initial arguments based on its assigned persona.
+   - The Secondary Agent then analyzes those points and responds with counter-arguments from its own distinct perspective.
+4. **Independent LLM Providers**: Each of these three agents can be powered by entirely different LLM providers (for example, you can have OpenAI's GPT-4 debating Anthropic's Claude 3).
+5. **Real-Time Streaming**: As the agents "think" and generate text, the backend streams their responses token-by-token back to the user interface, creating a live, interactive viewing experience.
 
 ### 🔁 The Fallback Cascade
 
@@ -131,15 +120,16 @@ The goal is to make the AI agents feel like physical entities operating within a
 ### Frontend
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript / React
-- **Styling**: Tailwind CSS + Custom CSS Modules
+- **Styling**: Custom CSS (Vanilla CSS Variables & Claymorphism)
 - **Animations**: Framer Motion
 - **Icons**: Lucide React
 
 ### Backend
 - **Framework**: FastAPI (Python 3.10+)
+- **Agentic Engine**: AgentScope (v2.0.0+)
 - **Concurrency**: Uvicorn, asyncio
-- **LLM Clients**: `openai`, `anthropic`, `google-genai`, `groq`, `mistralai`
-- **Streaming**: `sse_starlette`
+- **Tools**: Crawl4AI, DuckDuckGo Search
+- **Streaming**: Server-Sent Events (SSE)
 
 ---
 

@@ -8,7 +8,8 @@ Includes Groq-powered pre-summarization to reduce token usage.
 import asyncio
 from typing import Optional
 from swarm.config import SwarmConfig
-from swarm.llm_client import call_llm
+from agentscope.agent import Agent
+from agentscope.message import UserMsg
 
 
 # ─── DuckDuckGo Search ───────────────────────────────────────────────────────
@@ -111,13 +112,11 @@ async def summarize_for_context(
         "Extract the architecturally relevant facts as concise bullet points."
     )
 
-    summary = await call_llm(
-        config=config.summarizer_llm,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        temperature=0.2,
-        max_tokens=800,
-    )
+    agent_model = config.summarizer_llm.get_agentscope_model()
+    as_agent = Agent(name="Summarizer", system_prompt=system_prompt, model=agent_model)
+    user_msg = UserMsg(name="System", content=user_prompt)
+    reply_msg = await as_agent.reply(user_msg)
+    summary = str(reply_msg.content)
 
     return summary
 

@@ -10,7 +10,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Optional, AsyncIterator
 from swarm.config import SwarmConfig
-from swarm.llm_client import call_llm
+from agentscope.agent import Agent
+from agentscope.message import UserMsg
 from swarm.tools import cached_research, ResearchCache, _research_cache
 from swarm.personas import (
     AgentPersona,
@@ -19,6 +20,24 @@ from swarm.personas import (
     JUDGE_FINAL_VERDICT_PROMPT,
 )
 
+
+# ─── Utility Functions ─────────────────────────────────────────────────────────
+
+def extract_text(content) -> str:
+    """Safely extract text from an AgentScope Msg content, which might be a string or a list of blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if hasattr(item, "text"):
+                parts.append(item.text)
+            elif isinstance(item, dict) and "text" in item:
+                parts.append(item["text"])
+            else:
+                parts.append(str(item))
+        return " ".join(parts)
+    return str(content)
 
 # ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -245,11 +264,12 @@ class DebateEngine:
                 "Argue passionately from YOUR perspective. Maximum 300 words."
             )
 
-            response = await call_llm(
-                config=self.config.primary_llm,
-                system_prompt=agent.system_prompt,
-                user_prompt=user_prompt,
-            )
+            agent_model = self.config.primary_llm.get_agentscope_model()
+            as_agent = Agent(name=agent.name, system_prompt=agent.system_prompt, model=agent_model)
+            user_msg = UserMsg(name="System", content=user_prompt)
+            
+            reply_msg = await as_agent.reply(user_msg)
+            response = extract_text(reply_msg.content)
 
             # Create and store the message
             msg = DebateMessage(
@@ -362,11 +382,12 @@ class DebateEngine:
                 "Be specific about technology choices."
             )
 
-            response = await call_llm(
-                config=self.config.primary_llm,
-                system_prompt=agent.system_prompt,
-                user_prompt=user_prompt,
-            )
+            agent_model = self.config.primary_llm.get_agentscope_model()
+            as_agent = Agent(name=agent.name, system_prompt=agent.system_prompt, model=agent_model)
+            user_msg = UserMsg(name="System", content=user_prompt)
+            
+            reply_msg = await as_agent.reply(user_msg)
+            response = extract_text(reply_msg.content)
 
             msg = DebateMessage(
                 agent_name=agent.name,
@@ -436,12 +457,12 @@ class DebateEngine:
             "Should the debate continue, or is there a critical ambiguity you need the user to clarify?"
         )
 
-        response = await call_llm(
-            config=self.config.primary_llm,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.3,
-        )
+        agent_model = self.config.primary_llm.get_agentscope_model()
+        as_agent = Agent(name="The Judge", system_prompt=system_prompt, model=agent_model)
+        user_msg = UserMsg(name="System", content=user_prompt)
+        
+        reply_msg = await as_agent.reply(user_msg)
+        response = extract_text(reply_msg.content)
 
         cleaned = response.strip()
         if cleaned.upper() == "CONTINUE" or len(cleaned) < 5:
@@ -501,12 +522,13 @@ class DebateEngine:
         )
 
         self.add_thinking_update("The Judge", "⚖️", "Synthesizing hybrid architectures & generating Mermaid diagrams...")
-        self.state.judge_synthesis = await call_llm(
-            config=self.config.primary_llm,
-            system_prompt=JUDGE_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            max_tokens=4096,
-        )
+        
+        agent_model = self.config.primary_llm.get_agentscope_model()
+        as_agent = Agent(name="The Judge", system_prompt=JUDGE_SYSTEM_PROMPT, model=agent_model)
+        user_msg = UserMsg(name="System", content=user_prompt)
+        
+        reply_msg = await as_agent.reply(user_msg)
+        self.state.judge_synthesis = extract_text(reply_msg.content)
 
         # Notify via a Judge message
         msg = DebateMessage(
@@ -550,12 +572,13 @@ class DebateEngine:
         )
 
         self.add_thinking_update("The Judge", "⚖️", "Composing critical trade-off clarification question...")
-        first_question = await call_llm(
-            config=self.config.primary_llm,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.7,
-        )
+        
+        agent_model = self.config.primary_llm.get_agentscope_model()
+        as_agent = Agent(name="The Judge", system_prompt=system_prompt, model=agent_model)
+        user_msg = UserMsg(name="System", content=user_prompt)
+        
+        reply_msg = await as_agent.reply(user_msg)
+        first_question = extract_text(reply_msg.content)
 
         # Store in history
         self.state.alignment_history.append({"role": "assistant", "content": first_question})
@@ -635,12 +658,13 @@ class DebateEngine:
         )
 
         self.add_thinking_update("The Judge", "⚖️", "Recalculating score priorities and generating next step...")
-        response_str = await call_llm(
-            config=self.config.primary_llm,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.1,
-        )
+        
+        agent_model = self.config.primary_llm.get_agentscope_model()
+        as_agent = Agent(name="The Judge", system_prompt=system_prompt, model=agent_model)
+        user_msg = UserMsg(name="System", content=user_prompt)
+        
+        reply_msg = await as_agent.reply(user_msg)
+        response_str = extract_text(reply_msg.content)
 
         cleaned = response_str.strip()
         if cleaned.startswith("```json"):
@@ -709,12 +733,13 @@ class DebateEngine:
         )
 
         self.add_thinking_update("The Judge", "🏆", "Optimizing technical stack according to prioritized trade-offs...")
-        self.state.final_verdict = await call_llm(
-            config=self.config.primary_llm,
-            system_prompt=JUDGE_FINAL_VERDICT_PROMPT,
-            user_prompt=user_prompt,
-            max_tokens=4096,
-        )
+        
+        agent_model = self.config.primary_llm.get_agentscope_model()
+        as_agent = Agent(name="The Judge", system_prompt=JUDGE_FINAL_VERDICT_PROMPT, model=agent_model)
+        user_msg = UserMsg(name="System", content=user_prompt)
+        
+        reply_msg = await as_agent.reply(user_msg)
+        self.state.final_verdict = extract_text(reply_msg.content)
 
         self.state.status = "complete"
 

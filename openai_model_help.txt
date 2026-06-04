@@ -1,0 +1,127 @@
+Help on class OpenAIChatModel in module agentscope.model._openai_chat._model:
+
+class OpenAIChatModel(agentscope.model._base.ChatModelBase)
+ |  OpenAIChatModel(credential: agentscope.credential._openai.OpenAICredential, model: str, parameters: 'OpenAIChatModel.Parameters | None' = None, stream: bool = True, max_retries: int = 3, context_size: int = 128000, formatter: agentscope.formatter._formatter_base.FormatterBase | None = None) -> None
+ |
+ |  The OpenAI Chat Completions model.
+ |
+ |  Method resolution order:
+ |      OpenAIChatModel
+ |      agentscope.model._base.ChatModelBase
+ |      builtins.object
+ |
+ |  Methods defined here:
+ |
+ |  __init__(self, credential: agentscope.credential._openai.OpenAICredential, model: str, parameters: 'OpenAIChatModel.Parameters | None' = None, stream: bool = True, max_retries: int = 3, context_size: int = 128000, formatter: agentscope.formatter._formatter_base.FormatterBase | None = None) -> None
+ |      Initialize the OpenAI chat model.
+ |
+ |      Args:
+ |          credential (`OpenAICredential`):
+ |              The OpenAI credential used to authenticate API calls.
+ |          model (`str`):
+ |              The OpenAI model name, e.g. ``gpt-4.1``.
+ |          parameters (`OpenAIChatModel.Parameters | None`, defaults to             `None`):
+ |              The OpenAI Chat API parameters. When ``None``, the default
+ |              parameters will be used.
+ |          stream (`bool`, defaults to `True`):
+ |              Whether to enable streaming output.
+ |          max_retries (`int`, defaults to `3`):
+ |              The maximum number of retries for the OpenAI API.
+ |          context_size (`int`, defaults to `128000`):
+ |              The model context size used for context compression.
+ |          formatter (`FormatterBase | None`, defaults to `None`):
+ |              The formatter that converts ``Msg`` objects to the format
+ |              required by the OpenAI API. When ``None``, an
+ |              ``OpenAIChatFormatter`` instance will be used.
+ |
+ |  ----------------------------------------------------------------------
+ |  Data and other attributes defined here:
+ |
+ |  Parameters = <class 'agentscope.model._openai_chat._model.OpenAIChatMo...
+ |      The parameters for the OpenAI Chat model.
+ |
+ |
+ |  __annotations__ = {'type': typing.Literal['openai_chat']}
+ |
+ |  type = 'openai_chat'
+ |
+ |  ----------------------------------------------------------------------
+ |  Methods inherited from agentscope.model._base.ChatModelBase:
+ |
+ |  async __call__(self, messages: list[agentscope.message._base.Msg], tools: list[dict] | None = None, tool_choice: agentscope.tool._types.ToolChoice | None = None, **kwargs: Any) -> Union[agentscope.model._model_response.ChatResponse, AsyncGenerator[agentscope.model._model_response.ChatResponse, NoneType]]
+ |      Call the model with retry and fallback logic.
+ |
+ |      Formats messages using formatter if available, then attempts
+ |      to call the model up to max_retries + 1 times. If all attempts
+ |      fail and a fallback model is configured, retries with that model.
+ |
+ |      Args:
+ |          messages (`list[Msg]`):
+ |              The messages to send to the model.
+ |          tools (`list[dict] | None`, optional):
+ |              The tools available to the model.
+ |          tool_choice (`ToolChoice | None`, optional):
+ |              The tool choice mode or function name.
+ |          **kwargs:
+ |              Additional keyword arguments passed to the underlying API.
+ |
+ |  async count_tokens(self, messages: list[agentscope.message._base.Msg], tools: list[dict] | None) -> int
+ |      A quick and unified method to estimate the token count of the
+ |      model input by dividing the total input size in bytes by 4.
+ |
+ |      Note a standard way to count the tokens is first formatting the input
+ |      messages into the API required format, then use the tokenizer of the
+ |      underlying API to count the tokens.
+ |
+ |      Subclasses may override this method to provide a more accurate
+ |      implementation tailored to their specific tokenizer.
+ |
+ |      Args:
+ |          messages (`list[Msg]`):
+ |              The messages to send to the model.
+ |          tools (`list[dict] | None`):
+ |              The tools available to the model.
+ |
+ |      Returns:
+ |          `int`:
+ |              The number of tokens in the model.
+ |
+ |  async generate_structured_output(self, messages: list[agentscope.message._base.Msg], structured_model: Union[Type[pydantic.main.BaseModel], dict], **kwargs: Any) -> agentscope.model._model_response.StructuredResponse
+ |      Generate required structured output by the given model.
+ |
+ |      Note this function also shares the fallback model and max retries
+ |      settings with the `__call__` method.
+ |
+ |      Args:
+ |          messages (`list[Msg]`):
+ |              The context for LLM to generate the structured output.
+ |          structured_model (`Type[BaseModel] | dict`):
+ |              A Pydantic model or a dict of JSON schemas.
+ |
+ |      Returns:
+ |          `StructuredResponse`:
+ |              The structured response generated by the model.
+ |
+ |  ----------------------------------------------------------------------
+ |  Class methods inherited from agentscope.model._base.ChatModelBase:
+ |
+ |  list_models(custom_yaml_dir: str | None = None) -> list[agentscope.model._model_card.ModelCard]
+ |      List candidate models of the API.
+ |
+ |      Args:
+ |          custom_yaml_dir (`str | None`):
+ |              The custom YAML directory.
+ |
+ |      Returns:
+ |          `list[ModelCard]`:
+ |              A list of candidate models.
+ |
+ |  ----------------------------------------------------------------------
+ |  Data descriptors inherited from agentscope.model._base.ChatModelBase:
+ |
+ |  __dict__
+ |      dictionary for instance variables
+ |
+ |  __weakref__
+ |      list of weak references to the object
+
