@@ -183,32 +183,27 @@ function ParticleLink({
 }) {
   const lineRef = useRef<THREE.Line>(null);
 
-  const geometry = useMemo(() => {
-    const g = new THREE.BufferGeometry().setFromPoints([
+  const lineObj = useMemo(() => {
+    const geometry = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(...start),
       new THREE.Vector3(...end),
     ]);
-    return g;
+    const material = new THREE.LineBasicMaterial({
+      color: "#4040a0",
+      transparent: true,
+      opacity: 0.1,
+    });
+    return new THREE.Line(geometry, material);
   }, [start, end]);
 
-  useFrame((state) => {
-    if (lineRef.current) {
-      const mat = lineRef.current.material as THREE.LineBasicMaterial;
-      const targetOpacity = isActive ? 0.6 : 0.1;
-      mat.opacity += (targetOpacity - mat.opacity) * 0.05;
-    }
+  useFrame(() => {
+    const mat = lineObj.material as THREE.LineBasicMaterial;
+    const targetOpacity = isActive ? 0.6 : 0.1;
+    mat.opacity += (targetOpacity - mat.opacity) * 0.05;
+    mat.color.set(isActive ? color : "#4040a0");
   });
 
-  return (
-    <line ref={lineRef as any} geometry={geometry}>
-      <lineBasicMaterial
-        color={isActive ? color : "#4040a0"}
-        transparent
-        opacity={0.1}
-        linewidth={1}
-      />
-    </line>
-  );
+  return <primitive ref={lineRef} object={lineObj} />;
 }
 
 function SwarmScene({ activeAgent }: { activeAgent: string | null }) {
@@ -272,7 +267,7 @@ const messageVariants = {
     opacity: 1,
     x: 0,
     scale: 1,
-    transition: { type: "spring", stiffness: 300, damping: 24 },
+    transition: { type: "spring" as const, stiffness: 300, damping: 24 },
   },
   exit: { opacity: 0, x: -10, transition: { duration: 0.15 } },
 };
@@ -294,7 +289,7 @@ const cardPopVariants = {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: "spring", stiffness: 260, damping: 20 },
+    transition: { type: "spring" as const, stiffness: 260, damping: 20 },
   },
   exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.15 } },
 };
