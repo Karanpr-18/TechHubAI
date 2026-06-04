@@ -1,105 +1,54 @@
-# 🤖 Agent Swarm - The Tech Stack Council
+# TechHubAI - Swarm Debate Engine 🐝
 
-An open-source multi-agent system where **4 AI agents with completely different perspectives** debate and argue to find the perfect tech stack and architecture for your project.
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat&logo=next.js)](https://nextjs.org/)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat&logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 
-## 🏛️ How It Works
+TechHubAI is a cutting-edge **Multi-Agent Swarm Debate Platform**. It orchestrates complex, multi-perspective debates between various LLMs to reach highly nuanced conclusions. Complete with a stunning, modern Claymorphic 3D UI, TechHubAI provides an unparalleled interactive AI experience.
 
-1. **You describe your project** — Paste your requirements or upload a file
-2. **4 Agents debate** — Each agent researches and argues from their unique angle:
-   - 🏛️ **The Veteran** — Boring, proven, battle-tested tech
-   - 🚀 **The Scaler** — Cloud-native, scalable, fast-to-ship
-   - ⚡ **The Pioneer** — Maximum performance, bleeding-edge
-   - 🧪 **The Mad Scientist** — Unheard, experimental, fresh tech
-3. **The Judge synthesizes** — Creates 2-3 hybrid architectures with pros/cons
-4. **You set your priorities** — Rate factors like cost, latency, scalability (1-10)
-5. **Final Verdict** — The Judge optimizes the tech stack based on YOUR priorities
+## ✨ Features
 
-## 🛠️ Tech Stack (for this project)
-
-### Backend
-- **Python** with **AgentScope** for multi-agent orchestration
-- **FastAPI** for the REST API + SSE streaming
-- **DuckDuckGo + Crawl4AI** for real-time web research
-- **Groq / OpenAI / Anthropic** via BYOK (Bring Your Own Key)
-
-### Frontend
-- **Next.js** (React) with vanilla CSS
-- Real-time debate streaming via Server-Sent Events (SSE)
-
-### Token Optimization
-- Groq-powered pre-summarization (Llama-3-70B)
-- Context history compression
-- Semantic caching across agents
+- 🧠 **Multi-Agent Swarm Engine**: Watch multiple AI agents (Primary, Secondary, and Supervisor) debate complex topics in real-time.
+- 🎨 **Premium Claymorphic UI**: A stunning, modern, animated 3D interface that feels alive and responsive.
+- 🔄 **Intelligent Model Fallback**: Built-in rate-limit handling and automatic model fallbacks ensure uninterrupted debates even when API limits are reached.
+- 🔌 **Multi-Provider Support**: Seamlessly use models from OpenAI, Anthropic, Google (Gemini), Groq, Mistral, and local Ollama instances.
+- 🛠️ **Customizable Personas**: Define custom system prompts for each agent to tailor their perspective in the debate.
+- 🌊 **Real-time Streaming**: Watch the debate unfold token-by-token with real-time streaming capabilities.
 
 ## 🚀 Quick Start
 
-### 1. Backend Setup (Ubuntu / Linux)
+Ready to dive in? Check out our comprehensive setup guide for your operating system:
 
-```bash
-# Create and activate a virtual environment
-python3 -m venv venv
-source venv/bin/activate
+👉 **[Read the Setup Guide (Mac/Windows/Linux)](SETUP.md)**
 
-# Install dependencies
-pip install -r requirements.txt
+## 🏗️ Architecture overview
 
-# Copy and configure your API keys
-cp .env.example .env
-# Edit .env with your Groq/OpenAI/Anthropic API key
+The platform is divided into a robust Python backend and a blazing-fast Next.js frontend.
 
-# Run the server
-python server.py
-```
+### Frontend (`/frontend`)
+- **Framework**: Next.js 14 (React)
+- **Styling**: Tailwind CSS with custom Claymorphism utilities
+- **Animations**: Framer Motion
+- **State**: React Hooks
 
-### 2. Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### 3. Open the App
-
-Navigate to `http://localhost:3000` and start a council!
-
-## 📋 Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GROQ_API_KEY` | Your Groq API key | Yes (if using Groq) |
-| `OPENAI_API_KEY` | Your OpenAI API key | Yes (if using OpenAI) |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | Yes (if using Anthropic) |
-| `PRIMARY_LLM_PROVIDER` | Provider for debate agents (`groq`, `openai`, `anthropic`) | No (default: `groq`) |
-| `PRIMARY_LLM_MODEL` | Model for debate agents | No (default: `llama-3.3-70b-versatile`) |
-
-## 📁 Project Structure
-
-```
-TechHubAI/
-├── server.py              # FastAPI server
-├── requirements.txt       # Python dependencies
-├── .env.example           # Environment variable template
-├── swarm/                 # Backend Debate Engine
-│   ├── __init__.py
-│   ├── config.py           # BYOK configuration
-│   ├── llm_client.py       # Unified LLM client (Groq/OpenAI/Anthropic)
-│   ├── tools.py            # DuckDuckGo + Crawl4AI + summarization
-│   ├── personas.py         # Agent personas & Judge prompts
-│   └── engine.py           # Debate engine & orchestration
-├── frontend/              # Next.js Application
-│   ├── app/
-│   │   ├── layout.tsx          # Root layout with SEO
-│   │   ├── page.tsx            # Main page (debate UI)
-│   │   └── globals.css         # Design system
-│   └── package.json
-└── README.md
-```
+### Backend (`/`)
+- **Server**: FastAPI
+- **LLM Orchestration**: Custom Swarm Engine
+- **Providers**: `openai`, `anthropic`, `google-genai`, `groq`, `mistralai`
+- **Streaming**: Server-Sent Events (SSE)
 
 ## 🤝 Contributing
 
-This is an open-source project! Contributions welcome.
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-## 📜 License
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-MIT
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
