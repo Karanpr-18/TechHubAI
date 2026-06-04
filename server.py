@@ -204,7 +204,25 @@ async def stream_debate(session_id: str):
                     yield f"data: {data}\n\n"
                 last_idx = len(current_messages)
 
-            # Check if debate is done
+            # Check if debate is done or waiting for mid-debate input
+            if engine.state.status == "waiting_for_mid_debate_input":
+                # Emit the interjection question
+                interjection_data = json.dumps({
+                    "type": "interjection",
+                    "question": engine.state.mid_debate_question,
+                    "status": "waiting_for_mid_debate_input",
+                })
+                yield f"data: {interjection_data}\n\n"
+                # Keep the stream alive and wait for the debate to resume
+                while engine.state.status == "waiting_for_mid_debate_input":
+                    await asyncio.sleep(0.5)
+                # Once resumed, emit a status update
+                resume_data = json.dumps({
+                    "type": "status",
+                    "status": "debating",
+                })
+                yield f"data: {resume_data}\n\n"
+
             if engine.state.status in ("alignment_chat", "complete", "error"):
                 status_data = json.dumps({
                     "type": "status",
@@ -286,6 +304,56 @@ async def align_priorities(request: AlignRequest):
     return {
         "session_id": request.session_id,
         **result
+    }
+
+
+class InterjectRequest(BaseModel):
+    session_id: str
+    user_answer: str
+
+
+@app.post("/api/debate/interject")
+async def submit_interjection(request: InterjectRequest):
+    """
+    Submit a user answer to a mid-debate Judge interjection question.
+    This resumes the paused debate loop.
+    """
+    if request.session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    engine = _sessions[request.session_id]
+
+    if engine.state.status != "waiting_for_mid_debate_input":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session is in '{engine.state.status}' state. Expected 'waiting_for_mid_debate_input'.",
+        )
+
+    # Store the answer
+    engine.state.mid_debate_answer = request.user_answer
+    engine.state.mid_debate_answers.append({
+        "question": engine.state.mid_debate_question,
+        "answer": request.user_answer,
+    })
+
+    # Emit user answer as a debate message
+    user_msg = DebateMessage(
+        agent_name="User",
+        agent_emoji="👤",
+        agent_title="Mid-Debate Clarification",
+        round_number=300,  # Special round number for mid-debate user answers
+        content=request.user_answer,
+    )
+    engine.state.messages.append(user_msg)
+
+    # Resume the debate loop
+    if engine.state.user_interjection_event:
+        engine.state.user_interjection_event.set()
+
+    return {
+        "session_id": request.session_id,
+        "status": "resumed",
+        "message": "Debate resumed with your clarification.",
     }
 
 

@@ -80,7 +80,12 @@ class DebateState:
     alignment_history: list[dict] = field(default_factory=list)  # [{"role": "assistant"|"user", "content": "text"}]
     alignment_turns: int = 0
     final_verdict: str = ""
-    status: str = "idle"  # idle, debating, alignment_chat, finalizing, complete
+    status: str = "idle"  # idle, debating, waiting_for_mid_debate_input, alignment_chat, finalizing, complete
+    # Mid-debate dynamic interjection support
+    mid_debate_question: str = ""
+    mid_debate_answer: str = ""
+    mid_debate_answers: list[dict] = field(default_factory=list)  # [{"question": ..., "answer": ...}]
+    user_interjection_event: Optional[asyncio.Event] = field(default=None)
 
     def get_debate_history(self, max_rounds: Optional[int] = None) -> str:
         """Get the formatted debate history for context."""
@@ -342,6 +347,14 @@ class DebateEngine:
             if research_context:
                 user_prompt += f"## Your Follow-up Research\n{research_context}\n\n"
 
+            # Inject mid-debate user clarifications if available
+            if self.state.mid_debate_answers:
+                clarifications = "\n".join(
+                    f"Q: {qa['question']}\nA: {qa['answer']}"
+                    for qa in self.state.mid_debate_answers
+                )
+                user_prompt += f"## User Clarifications (Mid-Debate)\n{clarifications}\n\n"
+
             user_prompt += (
                 f"## Your Task\n{round_instruction}\n\n"
                 f"{prompt_instruction}\n\n"
@@ -371,12 +384,98 @@ class DebateEngine:
         return round_messages
 
     async def run_full_debate(self) -> list[DebateMessage]:
-        """Run all 3 rounds of the debate."""
+        """Run all 3 rounds of the debate, with dynamic Judge interjections."""
         all_messages = []
         for round_num in range(1, self.config.debate_rounds + 1):
             round_msgs = await self.run_debate_round(round_num)
             all_messages.extend(round_msgs)
+
+            # After each round, let the Judge dynamically evaluate if a question is needed
+            if round_num < self.config.debate_rounds:
+                should_ask = await self._judge_evaluate_interjection(round_num)
+                if should_ask:
+                    # Pause and wait for user answer
+                    await self._pause_for_user_interjection()
         return all_messages
+
+    async def _judge_evaluate_interjection(self, round_number: int) -> bool:
+        """
+        After a debate round, the Judge silently evaluates whether there is
+        a critical ambiguity that needs user input before proceeding.
+        Returns True if a question was generated and the debate should pause.
+        """
+        self.add_thinking_update("The Judge", "⚖️", f"Evaluating debate progress after Round {round_number}...")
+
+        debate_so_far = self.state.get_compressed_history()
+        prev_answers = ""
+        if self.state.mid_debate_answers:
+            prev_answers = "\n## Previous User Clarifications\n"
+            for qa in self.state.mid_debate_answers:
+                prev_answers += f"Q: {qa['question']}\nA: {qa['answer']}\n\n"
+
+        system_prompt = (
+            "You are the Technical Judge overseeing a council debate about a tech stack.\n"
+            "After reviewing the latest round of debate, decide if there is a CRITICAL ambiguity "
+            "in the user's project requirements that, if left unresolved, would lead the agents "
+            "to make fundamentally wrong assumptions in the next round.\n\n"
+            "Rules:\n"
+            "- Only ask if there is a genuinely CRITICAL gap. Do NOT ask trivial or nice-to-have questions.\n"
+            "- If you already have enough context, output EXACTLY the word: CONTINUE\n"
+            "- If you need to ask, output a single, friendly, direct question (max 40 words). "
+            "Do NOT output multiple questions. Do NOT use bullet points.\n"
+            "- Do NOT repeat questions that were already answered.\n\n"
+            "Output ONLY one of:\n"
+            "1. The word CONTINUE\n"
+            "2. Your single clarification question"
+        )
+
+        user_prompt = (
+            f"## Project Requirements\n{self.state.project_requirements}\n\n"
+            f"## Debate So Far (Round {round_number} just completed)\n{debate_so_far}\n\n"
+            f"{prev_answers}"
+            "Should the debate continue, or is there a critical ambiguity you need the user to clarify?"
+        )
+
+        response = await call_llm(
+            config=self.config.primary_llm,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.3,
+        )
+
+        cleaned = response.strip()
+        if cleaned.upper() == "CONTINUE" or len(cleaned) < 5:
+            self.add_thinking_update("The Judge", "⚖️", "No critical ambiguities detected. Debate continues.")
+            return False
+
+        # The Judge has a question!
+        self.state.mid_debate_question = cleaned
+        self.add_thinking_update("The Judge", "⚖️", f"Critical question identified: {cleaned[:80]}...")
+
+        # Emit the question as a debate message
+        msg = DebateMessage(
+            agent_name="The Judge",
+            agent_emoji="⚖️",
+            agent_title="Mid-Debate Clarification",
+            round_number=200 + round_number,  # Special round number for mid-debate questions
+            content=cleaned,
+        )
+        self.state.messages.append(msg)
+        await self._notify(msg)
+        return True
+
+    async def _pause_for_user_interjection(self):
+        """Pause the debate loop and wait for the user to answer the Judge's question."""
+        self.state.user_interjection_event = asyncio.Event()
+        self.state.status = "waiting_for_mid_debate_input"
+        self.add_thinking_update("System", "⏸️", "Debate paused. Waiting for user clarification...")
+
+        # Block until the event is set by the /api/debate/interject endpoint
+        await self.state.user_interjection_event.wait()
+
+        # Resume
+        self.state.status = "debating"
+        self.add_thinking_update("System", "▶️", "User responded. Resuming debate...")
 
     # ─── Phase 3: Judge Synthesis ────────────────────────────────────────
 
