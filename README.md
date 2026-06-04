@@ -138,18 +138,19 @@ The goal is to make the AI agents feel like physical entities operating within a
 ## 🛠️ Technology Stack
 
 ### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript / React
-- **Styling**: Custom CSS (Vanilla CSS Variables & Claymorphism)
-- **Animations**: Framer Motion
-- **Icons**: Lucide React
+- **Next.js 14 (App Router)**: Serves as the main web application framework, providing routing, layout structures, and server-side optimizations.
+- **TypeScript / React**: Ensures type-safe component state management and interface structural safety.
+- **Custom CSS (Vanilla CSS Variables & Claymorphism)**: Drives the tactile 3D visual design system, using custom shadows, gradients, and CSS variables for real-time styling.
+- **Framer Motion**: Powers smooth, physics-based micro-animations and page/card transition animations.
+- **Lucide React**: Provides clean, consistent icons for UI elements and navigation indicators.
 
 ### Backend
-- **Framework**: FastAPI (Python 3.10+)
-- **Agentic Engine**: AgentScope (v2.0.0+)
-- **Concurrency**: Uvicorn, asyncio
-- **Tools**: Crawl4AI, DuckDuckGo Search
-- **Streaming**: Server-Sent Events (SSE)
+- **FastAPI (Python 3.10+)**: Serves as the backend web API, orchestrating request configuration settings and initializing the swarm debate loop.
+- **AgentScope (v2.0.0+)**: Serves as the core multi-agent orchestrator, organizing agent execution loops, maintaining message flows, and adapting configurations.
+- **Uvicorn & Asyncio**: Handles concurrent asynchronous execution loops, ensuring efficient background processing of debates and research tasks.
+- **Crawl4AI**: Scrapes target website pages to retrieve clean, raw markdown and text for LLM ingestion.
+- **DuckDuckGo Search**: Executes live web searches to find external information for the agents.
+- **Server-Sent Events (SSE)**: Streams thinking states and generated tokens in real time to the frontend interface.
 
 ---
 
