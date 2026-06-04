@@ -45,10 +45,10 @@ Whether you are evaluating model reasoning capabilities, researching complex top
 
 To ensure cost-effective execution and peak reasoning quality, TechHubAI implements a double-pronged **Token Saving Architecture**:
 
-1. **Intelligent Research Pre-Summarization** ([tools.py](file:///home/karan/Desktop/TechHubAI/swarm/tools.py)):
+1. **Intelligent Research Pre-Summarization** ([tools.py](swarm/tools.py)):
    Instead of feeding raw, noisy web-scraped markdown (often 10,000+ tokens) directly into the agent context, the system runs a fast pre-summarization step using a dedicated summarizer model. It extracts only the core, architecturally relevant facts into a concise 300-400 token summary. This reduces the token payload by **up to 95%** for web-derived information.
    
-2. **Sliding-Window Context History Compression** ([engine.py](file:///home/karan/Desktop/TechHubAI/swarm/engine.py)):
+2. **Sliding-Window Context History Compression** ([engine.py](swarm/engine.py)):
    In multi-round debates, context sizes grow exponentially. TechHubAI uses a sliding-window compression system:
    - For active debate turns, older rounds are truncated to **250 characters** while the current round is injected in full.
    - For the final Supervisor/Judge synthesis, older rounds are capped at **350 characters**, and only the final round is presented in full.
