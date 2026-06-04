@@ -75,6 +75,7 @@ class StartDebateRequest(BaseModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
+    fallback_model: Optional[str] = None
 
 
 class PrioritiesRequest(BaseModel):
@@ -124,11 +125,13 @@ async def start_debate(request: StartDebateRequest):
 
     # Build config, optionally overriding with request-level BYOK
     config = SwarmConfig()
-    if request.provider and request.api_key:
+    if request.provider:
         config.primary_llm.provider = request.provider
-        config.primary_llm.api_key = request.api_key
+        config.primary_llm.api_key = request.api_key or config.get_api_key(request.provider)
         if request.model:
             config.primary_llm.model = request.model
+        if request.fallback_model:
+            config.primary_llm.fallback_model = request.fallback_model
 
     engine = get_or_create_session(session_id, config)
 

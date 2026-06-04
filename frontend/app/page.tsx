@@ -28,6 +28,7 @@ interface ThinkingUpdate {
 interface Settings {
   provider: string;
   model: string;
+  fallback_model: string;
   api_key: string;
   api_url: string;
 }
@@ -399,6 +400,7 @@ export default function Home() {
   const [settings, setSettings] = useState<Settings>({
     provider: "groq",
     model: "llama-3.3-70b-versatile",
+    fallback_model: "",
     api_key: "",
     api_url: "http://localhost:8000",
   });
@@ -413,6 +415,7 @@ export default function Home() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Auto-scroll messages
   useEffect(() => {
@@ -456,6 +459,7 @@ export default function Home() {
           provider: settings.provider,
           model: settings.model,
           api_key: settings.api_key || undefined,
+          fallback_model: settings.fallback_model || undefined,
         }),
       });
 
@@ -467,6 +471,7 @@ export default function Home() {
       setSessionId(data.session_id);
 
       const eventSource = new EventSource(`${apiBase}/api/debate/stream/${data.session_id}`);
+      eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (event) => {
         try {
@@ -513,6 +518,7 @@ export default function Home() {
               setError("The debate encountered an error.");
             }
             eventSource.close();
+            eventSourceRef.current = null;
             return;
           }
 
@@ -525,6 +531,7 @@ export default function Home() {
 
       eventSource.onerror = () => {
         eventSource.close();
+        eventSourceRef.current = null;
         setPhase((prev) => {
           if (prev === "debating") return "error";
           return prev;
@@ -636,6 +643,10 @@ export default function Home() {
   );
 
   const resetAll = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
     setPhase("input");
     setMessages([]);
     setThinkingUpdates([]);
@@ -727,9 +738,9 @@ export default function Home() {
             />
             <pointLight position={[-10, -15, -10]} intensity={0.5} color="#e0f2fe" />
             <directionalLight position={[0, 0, -6]} intensity={0.6} color="#ffffff" />
-            
+
             <SwarmScene activeAgent={activeAgent} setActiveAgent={setActiveAgent} />
-            
+
             <OrbitControls enableZoom={true} enablePan={false} maxDistance={12} minDistance={4} />
           </Canvas>
         </Suspense>
@@ -737,7 +748,7 @@ export default function Home() {
 
       {/* Header */}
       <header className="header">
-        <div className="header__logo">
+        <div className="header__logo" onClick={resetAll} style={{ cursor: "pointer" }} title="Reset Swarm and go back to input">
           <span className="header__icon">🏛️</span>
           <h1 className="header__title">Agent Swarm</h1>
         </div>
@@ -755,6 +766,24 @@ export default function Home() {
         <StepIndicator number={3} label="Your Priorities" state={getStepState(["alignment_chat", "awaiting_priorities"])} />
         <div className={`step__connector ${getStepState(["awaiting_priorities"]) === "complete" ? "step__connector--active" : ""}`} />
         <StepIndicator number={4} label="Final Verdict" state={getStepState(["finalizing", "complete"])} />
+        {phase !== "input" && (
+          <button
+            className="btn btn--secondary"
+            onClick={resetAll}
+            style={{
+              marginLeft: "1.5rem",
+              padding: "0.35rem 0.85rem",
+              fontSize: "0.75rem",
+              height: "28px",
+              borderRadius: "20px",
+              backgroundColor: "rgba(255, 255, 255, 0.9)",
+              border: "1px solid var(--border-default)",
+              boxShadow: "var(--shadow-sm)",
+            }}
+          >
+            🔄 Reset Swarm
+          </button>
+        )}
       </div>
 
       {/* Error Display */}
@@ -850,6 +879,7 @@ export default function Home() {
                         <option value="groq">Groq</option>
                         <option value="openai">OpenAI</option>
                         <option value="anthropic">Anthropic</option>
+                        <option value="mistral">Mistral</option>
                       </select>
                     </div>
                     <div className="settings-field">
@@ -860,6 +890,16 @@ export default function Home() {
                         value={settings.model}
                         onChange={(e) => setSettings({ ...settings, model: e.target.value })}
                         placeholder="llama-3.3-70b-versatile"
+                      />
+                    </div>
+                    <div className="settings-field">
+                      <label className="settings-field__label">Fallback Model (optional)</label>
+                      <input
+                        type="text"
+                        className="settings-field__input"
+                        value={settings.fallback_model}
+                        onChange={(e) => setSettings({ ...settings, fallback_model: e.target.value })}
+                        placeholder="openai/gpt-oss-120b"
                       />
                     </div>
                     <div className="settings-field">

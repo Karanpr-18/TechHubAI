@@ -19,6 +19,7 @@ class LLMConfig:
     api_key: str
     temperature: float = 0.7
     max_tokens: int = 2048
+    fallback_model: Optional[str] = None
 
 
 @dataclass
@@ -56,6 +57,7 @@ class SwarmConfig:
             "openai": os.getenv("OPENAI_API_KEY", ""),
             "anthropic": os.getenv("ANTHROPIC_API_KEY", ""),
             "groq": os.getenv("GROQ_API_KEY", ""),
+            "mistral": os.getenv("MISTRAL_API_KEY", ""),
         }
         return key_map.get(provider, "")
 
