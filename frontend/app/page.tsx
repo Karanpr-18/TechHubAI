@@ -1,5 +1,9 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Float, Html } from "@react-three/drei";
+import { motion, AnimatePresence } from "framer-motion";
+import * as THREE from "three";
 import SafeMarkdown from "./components/SafeMarkdown";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -21,17 +25,6 @@ interface ThinkingUpdate {
   timestamp?: string;
 }
 
-interface UserPriorities {
-  tech_difficulty: number;
-  efficiency: number;
-  latency: number;
-  cost: number;
-  maintainability: number;
-  scalability: number;
-  time_to_market: number;
-  community_support: number;
-}
-
 interface Settings {
   provider: string;
   model: string;
@@ -42,6 +35,7 @@ interface Settings {
 type AppPhase =
   | "input"
   | "debating"
+  | "waiting_for_mid_debate_input"
   | "alignment_chat"
   | "awaiting_priorities"
   | "finalizing"
@@ -52,73 +46,6 @@ type AppPhase =
    Constants
    ═══════════════════════════════════════════════════════════════════════ */
 
-const PRIORITY_FIELDS: {
-  key: keyof UserPriorities;
-  label: string;
-  emoji: string;
-  desc: string;
-}[] = [
-  {
-    key: "tech_difficulty",
-    label: "Ease of Learning",
-    emoji: "📚",
-    desc: "How simple should the stack be to learn?",
-  },
-  {
-    key: "efficiency",
-    label: "Performance",
-    emoji: "⚡",
-    desc: "How much does raw compute efficiency matter?",
-  },
-  {
-    key: "latency",
-    label: "Latency",
-    emoji: "🏎️",
-    desc: "How critical is sub-millisecond response time?",
-  },
-  {
-    key: "cost",
-    label: "Cost",
-    emoji: "💰",
-    desc: "How important is keeping infrastructure cheap?",
-  },
-  {
-    key: "maintainability",
-    label: "Maintainability",
-    emoji: "🔧",
-    desc: "How easy should it be to maintain long-term?",
-  },
-  {
-    key: "scalability",
-    label: "Scalability",
-    emoji: "📈",
-    desc: "How much does horizontal scaling matter?",
-  },
-  {
-    key: "time_to_market",
-    label: "Time to Market",
-    emoji: "🚀",
-    desc: "How fast do you need to ship?",
-  },
-  {
-    key: "community_support",
-    label: "Community & Ecosystem",
-    emoji: "👥",
-    desc: "How important is community support?",
-  },
-];
-
-const DEFAULT_PRIORITIES: UserPriorities = {
-  tech_difficulty: 5,
-  efficiency: 5,
-  latency: 5,
-  cost: 5,
-  maintainability: 5,
-  scalability: 5,
-  time_to_market: 5,
-  community_support: 5,
-};
-
 const AGENT_CLASS_MAP: Record<string, string> = {
   "The Veteran": "veteran",
   "The Scaler": "scaler",
@@ -127,6 +54,14 @@ const AGENT_CLASS_MAP: Record<string, string> = {
   "The Judge": "judge",
   System: "judge",
   User: "user",
+};
+
+const AGENT_COLORS: Record<string, string> = {
+  "The Veteran": "#8b9dc3",
+  "The Scaler": "#00d4aa",
+  "The Pioneer": "#ff6b6b",
+  "The Mad Scientist": "#ffa94d",
+  "The Judge": "#7c5cfc",
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -146,125 +81,223 @@ function getSummary(content: string): string {
   if (sentences.length > 0) {
     const summary = sentences.slice(0, 2).join(". ").trim();
     if (summary.length > 30) {
-      return summary + (summary.endsWith(".") ? "" : ".");
+      return summary.slice(0, 160) + (summary.length > 160 ? "..." : "");
     }
   }
   return clean.slice(0, 160).trim() + (clean.length > 160 ? "..." : "");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Swarm Graph SVG Component
+   3D Swarm Visualization Components
    ═══════════════════════════════════════════════════════════════════════ */
 
-function SwarmGraph({ activeAgent }: { activeAgent: string | null }) {
-  const nodes = [
-    { name: "The Veteran", emoji: "🏛️", x: 120, y: 80, color: "#8b9dc3" },
-    { name: "The Scaler", emoji: "🚀", x: 380, y: 80, color: "#00d4aa" },
-    { name: "The Mad Scientist", emoji: "🧪", x: 380, y: 320, color: "#ffa94d" },
-    { name: "The Pioneer", emoji: "⚡", x: 120, y: 320, color: "#ff6b6b" },
-    { name: "The Judge", emoji: "⚖️", x: 250, y: 200, color: "#7c5cfc" },
+interface AgentNodeProps {
+  position: [number, number, number];
+  color: string;
+  emoji: string;
+  name: string;
+  isActive: boolean;
+  isJudge?: boolean;
+}
+
+function AgentOrb({ position, color, isActive, isJudge, emoji, name }: AgentNodeProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
+  const targetScale = isActive ? 1.4 : 1;
+  const baseSize = isJudge ? 0.5 : 0.35;
+
+  useFrame((state) => {
+    if (meshRef.current) {
+      meshRef.current.scale.lerp(
+        new THREE.Vector3(targetScale, targetScale, targetScale),
+        0.08
+      );
+    }
+    if (glowRef.current) {
+      const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.15 + 1;
+      const glowScale = isActive ? targetScale * pulse * 1.8 : targetScale * 1.5;
+      glowRef.current.scale.lerp(
+        new THREE.Vector3(glowScale, glowScale, glowScale),
+        0.06
+      );
+      (glowRef.current.material as THREE.MeshBasicMaterial).opacity = isActive ? 0.2 : 0.06;
+    }
+  });
+
+  return (
+    <Float speed={isActive ? 4 : 1.5} rotationIntensity={0.1} floatIntensity={isActive ? 0.5 : 0.2}>
+      <group position={position}>
+        {/* Outer glow sphere */}
+        <mesh ref={glowRef}>
+          <sphereGeometry args={[baseSize * 2, 16, 16]} />
+          <meshBasicMaterial color={color} transparent opacity={0.06} />
+        </mesh>
+
+        {/* Main orb */}
+        <mesh ref={meshRef}>
+          <sphereGeometry args={[baseSize, 32, 32]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={isActive ? 1.2 : 0.3}
+            roughness={0.2}
+            metalness={0.8}
+            transparent
+            opacity={0.85}
+          />
+        </mesh>
+
+        {/* Agent label */}
+        <Html center distanceFactor={8} style={{ pointerEvents: "none" }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: isActive ? color : "#8080a8",
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: isActive ? 700 : 500,
+              fontSize: isJudge ? "11px" : "10px",
+              whiteSpace: "nowrap",
+              textShadow: isActive ? `0 0 12px ${color}` : "none",
+              transform: "translateY(28px)",
+            }}
+          >
+            <div style={{ fontSize: isJudge ? "20px" : "16px", marginBottom: 2 }}>{emoji}</div>
+            {name}
+          </div>
+        </Html>
+      </group>
+    </Float>
+  );
+}
+
+function ParticleLink({
+  start,
+  end,
+  isActive,
+  color,
+}: {
+  start: [number, number, number];
+  end: [number, number, number];
+  isActive: boolean;
+  color: string;
+}) {
+  const lineRef = useRef<THREE.Line>(null);
+
+  const geometry = useMemo(() => {
+    const g = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(...start),
+      new THREE.Vector3(...end),
+    ]);
+    return g;
+  }, [start, end]);
+
+  useFrame((state) => {
+    if (lineRef.current) {
+      const mat = lineRef.current.material as THREE.LineBasicMaterial;
+      const targetOpacity = isActive ? 0.6 : 0.1;
+      mat.opacity += (targetOpacity - mat.opacity) * 0.05;
+    }
+  });
+
+  return (
+    <line ref={lineRef as any} geometry={geometry}>
+      <lineBasicMaterial
+        color={isActive ? color : "#4040a0"}
+        transparent
+        opacity={0.1}
+        linewidth={1}
+      />
+    </line>
+  );
+}
+
+function SwarmScene({ activeAgent }: { activeAgent: string | null }) {
+  const agents = [
+    { name: "The Veteran", emoji: "🏛️", pos: [-2.2, 1.2, 0] as [number, number, number], color: "#8b9dc3" },
+    { name: "The Scaler", emoji: "🚀", pos: [2.2, 1.2, 0] as [number, number, number], color: "#00d4aa" },
+    { name: "The Mad Scientist", emoji: "🧪", pos: [2.2, -1.2, 0] as [number, number, number], color: "#ffa94d" },
+    { name: "The Pioneer", emoji: "⚡", pos: [-2.2, -1.2, 0] as [number, number, number], color: "#ff6b6b" },
+    { name: "The Judge", emoji: "⚖️", pos: [0, 0, 0.5] as [number, number, number], color: "#7c5cfc", isJudge: true },
   ];
 
   const connections = [
-    { from: "The Veteran", to: "The Scaler" },
-    { from: "The Scaler", to: "The Mad Scientist" },
-    { from: "The Mad Scientist", to: "The Pioneer" },
-    { from: "The Pioneer", to: "The Veteran" },
-    { from: "The Veteran", to: "The Judge" },
-    { from: "The Scaler", to: "The Judge" },
-    { from: "The Mad Scientist", to: "The Judge" },
-    { from: "The Pioneer", to: "The Judge" },
+    { from: 0, to: 1 }, { from: 1, to: 2 }, { from: 2, to: 3 }, { from: 3, to: 0 },
+    { from: 0, to: 4 }, { from: 1, to: 4 }, { from: 2, to: 4 }, { from: 3, to: 4 },
   ];
 
   return (
-    <div className="swarm-graph-container">
-      <svg width="100%" height="100%" viewBox="0 0 500 400" className="swarm-svg">
-        <defs>
-          <radialGradient id="judge-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#7c5cfc" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#7c5cfc" stopOpacity="0" />
-          </radialGradient>
-          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
+    <>
+      <ambientLight intensity={0.15} />
+      <pointLight position={[0, 0, 5]} intensity={0.8} color="#7c5cfc" />
+      <pointLight position={[-3, 2, 3]} intensity={0.3} color="#00d4aa" />
+      <pointLight position={[3, -2, 3]} intensity={0.3} color="#ff6b6b" />
 
-        <circle cx="250" cy="200" r="120" fill="url(#judge-glow)" />
+      {connections.map((conn, i) => {
+        const a = agents[conn.from];
+        const b = agents[conn.to];
+        const isActive = activeAgent === a.name || activeAgent === b.name;
+        return (
+          <ParticleLink
+            key={i}
+            start={a.pos}
+            end={b.pos}
+            isActive={isActive}
+            color={isActive ? (activeAgent === a.name ? a.color : b.color) : "#4040a0"}
+          />
+        );
+      })}
 
-        {connections.map((conn, idx) => {
-          const fromNode = nodes.find((n) => n.name === conn.from)!;
-          const toNode = nodes.find((n) => n.name === conn.to)!;
-          const isActive = activeAgent === conn.from || activeAgent === conn.to;
-
-          return (
-            <line
-              key={idx}
-              x1={fromNode.x}
-              y1={fromNode.y}
-              x2={toNode.x}
-              y2={toNode.y}
-              className={`swarm-line ${isActive ? "swarm-line--active" : ""}`}
-            />
-          );
-        })}
-
-        {nodes.map((node, idx) => {
-          const isActive = activeAgent === node.name;
-          const isJudge = node.name === "The Judge";
-
-          return (
-            <g key={idx} className={`swarm-node ${isActive ? "swarm-node--active" : ""}`}>
-              {(isActive || isJudge) && (
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={isJudge ? 38 : 32}
-                  fill={node.color}
-                  opacity="0.2"
-                  className="swarm-node-pulse"
-                />
-              )}
-
-              <circle
-                cx={node.x}
-                cy={node.y}
-                r={isJudge ? 28 : 24}
-                fill="#16161f"
-                stroke={isActive ? node.color : "rgba(255,255,255,0.15)"}
-                strokeWidth={isActive ? 3 : 1.5}
-                filter={isActive ? "url(#glow)" : undefined}
-                className="swarm-node-bg"
-              />
-
-              <text
-                x={node.x}
-                y={node.y + 6}
-                textAnchor="middle"
-                fontSize={isJudge ? "1.4rem" : "1.2rem"}
-                className="swarm-node-emoji"
-              >
-                {node.emoji}
-              </text>
-
-              <text
-                x={node.x}
-                y={node.y + (isJudge ? 42 : 38)}
-                textAnchor="middle"
-                fill={isActive ? node.color : "#8888a0"}
-                fontSize="0.75rem"
-                fontWeight={isActive ? "700" : "500"}
-                className="swarm-node-label"
-              >
-                {node.name}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+      {agents.map((agent) => (
+        <AgentOrb
+          key={agent.name}
+          position={agent.pos}
+          color={agent.color}
+          emoji={agent.emoji}
+          name={agent.name}
+          isActive={activeAgent === agent.name}
+          isJudge={agent.isJudge}
+        />
+      ))}
+    </>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Framer Motion Variants
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const messageVariants = {
+  hidden: { opacity: 0, x: -20, scale: 0.97 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: { type: "spring", stiffness: 300, damping: 24 },
+  },
+  exit: { opacity: 0, x: -10, transition: { duration: 0.15 } },
+};
+
+const logVariants = {
+  hidden: { opacity: 0, x: -10 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.2 } },
+};
+
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.3 } },
+  exit: { opacity: 0, transition: { duration: 0.2 } },
+};
+
+const cardPopVariants = {
+  hidden: { opacity: 0, scale: 0.9, y: 30 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: "spring", stiffness: 260, damping: 20 },
+  },
+  exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.15 } },
+};
 
 /* ═══════════════════════════════════════════════════════════════════════
    Main Component
@@ -280,7 +313,6 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [judgeSynthesis, setJudgeSynthesis] = useState("");
   const [finalVerdict, setFinalVerdict] = useState("");
-  const [priorities, setPriorities] = useState<UserPriorities>(DEFAULT_PRIORITIES);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<Settings>({
     provider: "groq",
@@ -291,6 +323,11 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [userAlignmentResponse, setUserAlignmentResponse] = useState("");
   const [alignmentSubmitting, setAlignmentSubmitting] = useState(false);
+
+  // Mid-debate interjection state
+  const [interjectionQuestion, setInterjectionQuestion] = useState("");
+  const [interjectionAnswer, setInterjectionAnswer] = useState("");
+  const [interjectionSubmitting, setInterjectionSubmitting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -325,6 +362,8 @@ export default function Home() {
     setError(null);
     setJudgeSynthesis("");
     setFinalVerdict("");
+    setInterjectionQuestion("");
+    setInterjectionAnswer("");
 
     try {
       const res = await fetch(`${apiBase}/api/debate/start`, {
@@ -358,7 +397,23 @@ export default function Home() {
             return;
           }
 
+          if (msg.type === "interjection") {
+            // Judge has a mid-debate question
+            setPhase("waiting_for_mid_debate_input");
+            setInterjectionQuestion(msg.question);
+            setActiveAgent("The Judge");
+            return;
+          }
+
           if (msg.type === "status") {
+            if (msg.status === "debating") {
+              // Debate resumed after interjection
+              setPhase("debating");
+              setInterjectionQuestion("");
+              setInterjectionAnswer("");
+              return;
+            }
+
             setPhase(msg.status);
             setActiveAgent(null);
             if (msg.status === "alignment_chat") {
@@ -400,6 +455,33 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Unknown error");
     }
   }, [requirements, settings, apiBase]);
+
+  const handleInterjectionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!interjectionAnswer.trim() || !sessionId) return;
+
+    setInterjectionSubmitting(true);
+    try {
+      const res = await fetch(`${apiBase}/api/debate/interject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_answer: interjectionAnswer,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to submit interjection: ${res.statusText}`);
+      }
+
+      // The SSE stream will handle the status transition back to "debating"
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setInterjectionSubmitting(false);
+    }
+  };
 
   const handleAlignmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -484,9 +566,10 @@ export default function Home() {
     setSessionId(null);
     setJudgeSynthesis("");
     setFinalVerdict("");
-    setPriorities(DEFAULT_PRIORITIES);
     setUserAlignmentResponse("");
     setError(null);
+    setInterjectionQuestion("");
+    setInterjectionAnswer("");
   }, []);
 
   const getAgentClass = (name: string): string => {
@@ -494,8 +577,24 @@ export default function Home() {
   };
 
   const getCurrentRound = (): number => {
-    if (messages.length === 0) return 0;
-    return Math.max(...messages.map((m) => m.round_number));
+    const debateMessages = messages.filter((m) => m.round_number >= 0 && m.round_number <= 3);
+    if (debateMessages.length === 0) return 0;
+    return Math.max(...debateMessages.map((m) => m.round_number));
+  };
+
+  const getMessageLabel = (roundNumber: number): string => {
+    if (roundNumber === 0) return "Initial Proposal";
+    if (roundNumber >= 200 && roundNumber < 300) return "⚖️ Judge Question";
+    if (roundNumber >= 300) return "💬 Your Answer";
+    if (roundNumber === 99) return "Synthesis";
+    if (roundNumber === 100) return "Final Verdict";
+    if (roundNumber === 101) return "Alignment";
+    if (roundNumber === 102) return "Your Response";
+    return `Round ${roundNumber}`;
+  };
+
+  const isInterjectionMessage = (roundNumber: number): boolean => {
+    return roundNumber >= 200 && roundNumber < 400;
   };
 
   const getStepState = (stepPhases: AppPhase[]): "complete" | "active" | "pending" => {
@@ -503,6 +602,7 @@ export default function Home() {
     const phaseOrder: AppPhase[] = [
       "input",
       "debating",
+      "waiting_for_mid_debate_input",
       "alignment_chat",
       "awaiting_priorities",
       "finalizing",
@@ -532,7 +632,7 @@ export default function Home() {
       <div className="steps">
         <StepIndicator number={1} label="Requirements" state={getStepState(["input"])} />
         <div className={`step__connector ${getStepState(["input"]) === "complete" ? "step__connector--active" : ""}`} />
-        <StepIndicator number={2} label="Council Debate" state={getStepState(["debating"])} />
+        <StepIndicator number={2} label="Council Debate" state={getStepState(["debating", "waiting_for_mid_debate_input"])} />
         <div className={`step__connector ${getStepState(["debating"]) === "complete" ? "step__connector--active" : ""}`} />
         <StepIndicator number={3} label="Your Priorities" state={getStepState(["alignment_chat", "awaiting_priorities"])} />
         <div className={`step__connector ${getStepState(["awaiting_priorities"]) === "complete" ? "step__connector--active" : ""}`} />
@@ -540,155 +640,196 @@ export default function Home() {
       </div>
 
       {/* Error Display */}
-      {error && (
-        <div className="status-bar" style={{ borderColor: "var(--accent-tertiary)" }}>
-          <div className="status-bar__dot status-bar__dot--error" />
-          <span className="status-bar__text">Error: {error}</span>
-          <button className="btn btn--ghost" onClick={resetAll}>Reset</button>
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            className="status-bar"
+            style={{ borderColor: "var(--accent-tertiary)", margin: "0 0 1rem" }}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="status-bar__dot status-bar__dot--error" />
+            <span className="status-bar__text">Error: {error}</span>
+            <button className="btn btn--ghost" onClick={resetAll}>Reset</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Phase 1: Input */}
-      {phase === "input" && (
-        <div className="input-section glass-card">
-          <label className="input-section__label" htmlFor="requirements-input">📋 Project Requirements</label>
-          <textarea
-            id="requirements-input"
-            className="input-section__textarea"
-            placeholder={`Describe your project in detail. For example:\n\n"I want to build a real-time collaborative document editor like Notion, supporting up to 10,000 concurrent users. It needs rich text editing, commenting, version history, and real-time cursors. We have a team of 3 full-stack developers with experience in React and Python."`}
-            value={requirements}
-            onChange={(e) => setRequirements(e.target.value)}
-          />
+      <AnimatePresence>
+        {phase === "input" && (
+          <motion.div
+            className="input-section glass-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.4 }}
+          >
+            <label className="input-section__label" htmlFor="requirements-input">📋 Project Requirements</label>
+            <textarea
+              id="requirements-input"
+              className="input-section__textarea"
+              placeholder={`Describe your project in detail. For example:\n\n"I want to build a real-time collaborative document editor like Notion, supporting up to 10,000 concurrent users. It needs rich text editing, commenting, version history, and real-time cursors. We have a team of 3 full-stack developers with experience in React and Python."`}
+              value={requirements}
+              onChange={(e) => setRequirements(e.target.value)}
+            />
 
-          <div className="input-section__actions">
-            <button
-              id="start-debate-btn"
-              className="btn btn--primary"
-              onClick={startDebate}
-              disabled={!requirements.trim()}
-            >
-              ⚡ Start the Council
-            </button>
+            <div className="input-section__actions">
+              <button
+                id="start-debate-btn"
+                className="btn btn--primary"
+                onClick={startDebate}
+                disabled={!requirements.trim()}
+              >
+                ⚡ Start the Council
+              </button>
 
-            <div className="file-upload">
-              <input
-                type="file"
-                id="file-upload-input"
-                className="file-upload__input"
-                accept=".txt,.md,.pdf,.doc,.docx"
-                onChange={handleFileUpload}
-              />
-              <label htmlFor="file-upload-input" className="file-upload__label">📄 Upload File</label>
-            </div>
-
-            <button className="btn btn--ghost" onClick={() => setShowSettings(!showSettings)}>
-              ⚙️ {showSettings ? "Hide" : "API"} Settings
-            </button>
-          </div>
-
-          {/* BYOK Settings Panel */}
-          {showSettings && (
-            <div className="settings-panel">
-              <h3 className="settings-panel__title">🔑 Bring Your Own Key (BYOK)</h3>
-              <div className="settings-grid">
-                <div className="settings-field">
-                  <label className="settings-field__label">API Base URL</label>
-                  <input
-                    type="text"
-                    className="settings-field__input"
-                    value={settings.api_url}
-                    onChange={(e) => setSettings({ ...settings, api_url: e.target.value })}
-                    placeholder="http://localhost:8000"
-                  />
-                </div>
-                <div className="settings-field">
-                  <label className="settings-field__label">LLM Provider</label>
-                  <select
-                    className="settings-field__select"
-                    value={settings.provider}
-                    onChange={(e) => setSettings({ ...settings, provider: e.target.value })}
-                  >
-                    <option value="groq">Groq</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                  </select>
-                </div>
-                <div className="settings-field">
-                  <label className="settings-field__label">Model</label>
-                  <input
-                    type="text"
-                    className="settings-field__input"
-                    value={settings.model}
-                    onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                    placeholder="llama-3.3-70b-versatile"
-                  />
-                </div>
-                <div className="settings-field">
-                  <label className="settings-field__label">API Key (optional override)</label>
-                  <input
-                    type="password"
-                    className="settings-field__input"
-                    value={settings.api_key}
-                    onChange={(e) => setSettings({ ...settings, api_key: e.target.value })}
-                    placeholder="sk-..."
-                  />
-                </div>
+              <div className="file-upload">
+                <input
+                  type="file"
+                  id="file-upload-input"
+                  className="file-upload__input"
+                  accept=".txt,.md,.pdf,.doc,.docx"
+                  onChange={handleFileUpload}
+                />
+                <label htmlFor="file-upload-input" className="file-upload__label">📄 Upload File</label>
               </div>
+
+              <button className="btn btn--ghost" onClick={() => setShowSettings(!showSettings)}>
+                ⚙️ {showSettings ? "Hide" : "API"} Settings
+              </button>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* BYOK Settings Panel */}
+            <AnimatePresence>
+              {showSettings && (
+                <motion.div
+                  className="settings-panel"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                >
+                  <h3 className="settings-panel__title">🔑 Bring Your Own Key (BYOK)</h3>
+                  <div className="settings-grid">
+                    <div className="settings-field">
+                      <label className="settings-field__label">API Base URL</label>
+                      <input
+                        type="text"
+                        className="settings-field__input"
+                        value={settings.api_url}
+                        onChange={(e) => setSettings({ ...settings, api_url: e.target.value })}
+                        placeholder="http://localhost:8000"
+                      />
+                    </div>
+                    <div className="settings-field">
+                      <label className="settings-field__label">LLM Provider</label>
+                      <select
+                        className="settings-field__select"
+                        value={settings.provider}
+                        onChange={(e) => setSettings({ ...settings, provider: e.target.value })}
+                      >
+                        <option value="groq">Groq</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                      </select>
+                    </div>
+                    <div className="settings-field">
+                      <label className="settings-field__label">Model</label>
+                      <input
+                        type="text"
+                        className="settings-field__input"
+                        value={settings.model}
+                        onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                        placeholder="llama-3.3-70b-versatile"
+                      />
+                    </div>
+                    <div className="settings-field">
+                      <label className="settings-field__label">API Key (optional override)</label>
+                      <input
+                        type="password"
+                        className="settings-field__input"
+                        value={settings.api_key}
+                        onChange={(e) => setSettings({ ...settings, api_key: e.target.value })}
+                        placeholder="sk-..."
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Split Dashboard (Phase 2 & onwards) */}
       {phase !== "input" && (
         <div className="swarm-dashboard">
-          {/* Left Side: Swarm Visualizer & Message Stream */}
+          {/* Left Side: 3D Viz + Debate Feed */}
           <div className="swarm-dashboard__left">
-            <div className="glass-card swarm-graph-card">
-              <h3 className="swarm-graph-card__title">📡 Live Swarm Topology</h3>
-              <SwarmGraph activeAgent={activeAgent} />
+            {/* 3D Canvas */}
+            <div className="canvas-container">
+              <div className="canvas-title">
+                <span className="dot" />
+                Live Swarm Topology
+              </div>
+              <Suspense fallback={null}>
+                <Canvas
+                  camera={{ position: [0, 0, 6], fov: 50 }}
+                  style={{ background: "transparent" }}
+                  dpr={[1, 2]}
+                >
+                  <SwarmScene activeAgent={activeAgent} />
+                </Canvas>
+              </Suspense>
             </div>
 
-            {messages.length > 0 && (
-              <div className="debate-stream">
-                <div className="debate-stream__header">
-                  <h2 className="debate-stream__title">🏛️ Council Debate Feed</h2>
-                  {phase === "debating" && (
-                    <div className="debate-stream__round-badge">
-                      <div className="loading-dots">
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                      Round {getCurrentRound() || 1}
+            {/* Debate Feed (scrollable) */}
+            <div className="debate-feed">
+              <div className="debate-feed__header">
+                <span className="debate-feed__title">🏛️ Council Debate Feed</span>
+                {(phase === "debating" || phase === "waiting_for_mid_debate_input") && (
+                  <div className="debate-feed__badge">
+                    <div className="loading-dots">
+                      <span />
+                      <span />
+                      <span />
                     </div>
-                  )}
-                  {phase !== "debating" && (
-                    <div className="debate-stream__round-badge">✅ Debate Complete</div>
-                  )}
-                </div>
-
-                {phase === "debating" && (
-                  <div className="status-bar">
-                    <div className="status-bar__dot status-bar__dot--active" />
-                    <span className="status-bar__text">
-                      Swarm debating... ({messages.length} messages)
-                    </span>
+                    Round {getCurrentRound() || 1}
                   </div>
                 )}
+                {phase !== "debating" && phase !== "waiting_for_mid_debate_input" && messages.length > 0 && (
+                  <div className="debate-feed__badge">✅ Debate Complete</div>
+                )}
+              </div>
 
-                <div className="debate-stream__messages">
+              {phase === "debating" && (
+                <div className="status-bar">
+                  <div className="status-bar__dot status-bar__dot--active" />
+                  <span className="status-bar__text">
+                    Swarm debating... ({messages.filter((m) => m.round_number <= 3).length} messages)
+                  </span>
+                </div>
+              )}
+
+              <div className="debate-feed__scroll">
+                <AnimatePresence initial={false}>
                   {messages
                     .filter((m) => m.round_number !== 99 && m.round_number !== 100)
                     .map((msg, idx) => {
                       const isExpanded = !!expandedMessages[idx];
                       const summary = getSummary(msg.content);
                       const showToggle = msg.content.length > 160;
+                      const isInterject = isInterjectionMessage(msg.round_number);
 
                       return (
-                        <div
+                        <motion.div
                           key={idx}
-                          className={`agent-message agent-message--${getAgentClass(msg.agent_name)}`}
+                          className={`agent-message agent-message--${isInterject ? "interjection" : getAgentClass(msg.agent_name)}`}
+                          variants={messageVariants}
+                          initial="hidden"
+                          animate="visible"
+                          layout
                         >
                           <div className="agent-message__header">
                             <div className="agent-message__avatar">{msg.agent_emoji}</div>
@@ -697,7 +838,7 @@ export default function Home() {
                               <div className="agent-message__title">{msg.agent_title}</div>
                             </div>
                             <div className="agent-message__round">
-                              {msg.round_number === 0 ? "Initial Proposal" : `Round ${msg.round_number}`}
+                              {getMessageLabel(msg.round_number)}
                             </div>
                           </div>
                           <div className="agent-message__content">
@@ -712,15 +853,14 @@ export default function Home() {
                                 className="agent-message__toggle-btn"
                                 onClick={() => toggleMessage(idx)}
                               >
-                                {isExpanded ? "Collapse arguments ▲" : "Show full analysis ▼"}
+                                {isExpanded ? "Collapse ▲" : "Show full analysis ▼"}
                               </button>
                             )}
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
-                  <div ref={messagesEndRef} />
-                </div>
+                </AnimatePresence>
 
                 {phase === "debating" && (
                   <div className="loading-indicator">
@@ -729,19 +869,22 @@ export default function Home() {
                       <span />
                       <span />
                     </div>
-                    <span>Swarm agents are computing...</span>
+                    <span>Agents computing...</span>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Right Side: Activity log ticker */}
-          <div className="swarm-dashboard__right glass-card thinking-log-card">
-            <h3 className="thinking-log-title">⚡ Swarm Activity Logs</h3>
-            <div className="thinking-log-stream">
+          {/* Right Side: Activity Log */}
+          <div className="activity-log">
+            <div className="activity-log__header">
+              <h3 className="activity-log__title">⚡ Swarm Activity Logs</h3>
+            </div>
+            <div className="activity-log__stream">
               {thinkingUpdates.length === 0 ? (
-                <div className="thinking-log-empty">
+                <div className="activity-log__empty">
                   <div className="loading-dots">
                     <span />
                     <span />
@@ -750,15 +893,23 @@ export default function Home() {
                   <p>Bootstrapping Agent Swarm...</p>
                 </div>
               ) : (
-                thinkingUpdates.map((update, idx) => (
-                  <div key={idx} className="thinking-log-item">
-                    <span className="thinking-log-time">[{update.timestamp || ""}]</span>
-                    <span className="thinking-log-emoji">{update.agent_emoji}</span>
-                    <span className="thinking-log-text">
-                      <strong>{update.agent_name}</strong>: {update.status_text}
-                    </span>
-                  </div>
-                ))
+                <AnimatePresence initial={false}>
+                  {thinkingUpdates.map((update, idx) => (
+                    <motion.div
+                      key={idx}
+                      className="log-item"
+                      variants={logVariants}
+                      initial="hidden"
+                      animate="visible"
+                    >
+                      <span className="log-item__time">[{update.timestamp || ""}]</span>
+                      <span className="log-item__emoji">{update.agent_emoji}</span>
+                      <span className="log-item__text">
+                        <strong>{update.agent_name}</strong>: {update.status_text}
+                      </span>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               )}
               <div ref={logsEndRef} />
             </div>
@@ -766,9 +917,57 @@ export default function Home() {
         </div>
       )}
 
+      {/* Mid-Debate Interjection Overlay */}
+      <AnimatePresence>
+        {phase === "waiting_for_mid_debate_input" && interjectionQuestion && (
+          <motion.div
+            className="interjection-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
+            <motion.div
+              className="interjection-card"
+              variants={cardPopVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div className="interjection-card__emoji">⚖️</div>
+              <div className="interjection-card__title">The Judge needs your input</div>
+              <div className="interjection-card__question">{interjectionQuestion}</div>
+              <form className="interjection-card__form" onSubmit={handleInterjectionSubmit}>
+                <input
+                  className="interjection-card__input"
+                  type="text"
+                  placeholder="Type your answer..."
+                  value={interjectionAnswer}
+                  onChange={(e) => setInterjectionAnswer(e.target.value)}
+                  disabled={interjectionSubmitting}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="btn btn--primary"
+                  disabled={interjectionSubmitting || !interjectionAnswer.trim()}
+                >
+                  {interjectionSubmitting ? "Sending..." : "Answer"}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Judge Synthesis Display */}
       {judgeSynthesis && phase !== "input" && (
-        <div className="architecture-section">
+        <motion.div
+          className="architecture-section"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
           <div className="architecture-card">
             <div className="agent-message__header">
               <div className="agent-message__avatar">⚖️</div>
@@ -781,15 +980,20 @@ export default function Home() {
               <SafeMarkdown content={judgeSynthesis} />
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Phase 3: Conversational Alignment Chat */}
       {phase === "alignment_chat" && (
-        <div className="priorities-section glass-card">
+        <motion.div
+          className="alignment-section glass-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 200, damping: 20 }}
+        >
           <h2 className="priorities-section__title">⚖️ Clarify Priorities with the Judge</h2>
-          <p className="priorities-section__subtitle" style={{ marginBottom: "1.5rem" }}>
-            The Judge has initiated a conversational alignment session to resolve key trade-offs. Type your answers to the Judge in the box below.
+          <p className="priorities-section__subtitle">
+            The Judge has initiated a conversational alignment session to resolve key trade-offs.
           </p>
 
           <form onSubmit={handleAlignmentSubmit} style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
@@ -811,7 +1015,7 @@ export default function Home() {
               {alignmentSubmitting ? "Sending..." : "Send"}
             </button>
           </form>
-        </div>
+        </motion.div>
       )}
 
       {/* Finalizing Indicator */}
@@ -828,7 +1032,12 @@ export default function Home() {
 
       {/* Phase 4: Final Verdict */}
       {phase === "complete" && finalVerdict && (
-        <div className="final-verdict">
+        <motion.div
+          className="final-verdict"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
           <div className="agent-message__header">
             <div className="agent-message__avatar">🏆</div>
             <div className="agent-message__info">
@@ -843,7 +1052,7 @@ export default function Home() {
           <div style={{ marginTop: "2rem", textAlign: "center" }}>
             <button className="btn btn--secondary" onClick={resetAll}>🔄 Start a New Council</button>
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );
