@@ -750,7 +750,7 @@ export default function Home() {
       <header className="header">
         <div className="header__logo" onClick={resetAll} style={{ cursor: "pointer" }} title="Reset Swarm and go back to input">
           <span className="header__icon">🏛️</span>
-          <h1 className="header__title">Agent Swarm</h1>
+          <h1 className="header__title">TechHubAI</h1>
         </div>
         <p className="header__subtitle">
           Four expert agents debate project choices in a structured council, refined by the Judge.
@@ -937,7 +937,7 @@ export default function Home() {
                       <span />
                       <span />
                     </div>
-                    <p>Bootstrapping Agent Swarm...</p>
+                    <p>Bootstrapping TechHubAI...</p>
                   </div>
                 ) : (
                   <AnimatePresence initial={false}>

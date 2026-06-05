@@ -1,5 +1,5 @@
 """
-Configuration module for the Agent Swarm.
+Configuration module for TechHubAI.
 Handles BYOK (Bring Your Own Key) model configuration and environment loading.
 """
 
@@ -60,7 +60,7 @@ class LLMConfig:
 
 @dataclass
 class SwarmConfig:
-    """Master configuration for the entire Agent Swarm."""
+    """Master configuration for TechHubAI."""
 
     # Primary LLM for debate agents
     primary_llm: LLMConfig = field(default_factory=lambda: LLMConfig(

@@ -2,7 +2,7 @@
 Debate Engine Module
 =====================
 Orchestrates the 3-round council debate using the LLM client and agent tools.
-This is the core brain of the Agent Swarm.
+This is the core brain of TechHubAI.
 """
 
 import asyncio

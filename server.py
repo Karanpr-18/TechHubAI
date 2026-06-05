@@ -1,5 +1,5 @@
 """
-FastAPI Server for the Agent Swarm
+FastAPI Server for TechHubAI
 ====================================
 Exposes the debate engine as a REST API with SSE (Server-Sent Events)
 for real-time streaming of the debate to the frontend.
@@ -46,13 +46,13 @@ async def lifespan(app: FastAPI):
             print(f"   - {issue}")
     else:
         print("✅ Configuration validated successfully.")
-    print(f"🚀 Agent Swarm API starting on {config.api_host}:{config.api_port}")
+    print(f"🚀 TechHubAI API starting on {config.api_host}:{config.api_port}")
     yield
-    print("👋 Agent Swarm API shutting down.")
+    print("👋 TechHubAI API shutting down.")
 
 
 app = FastAPI(
-    title="Agent Swarm - The Tech Stack Council",
+    title="TechHubAI - The Tech Stack Council",
     description="Multi-agent debate system for tech stack recommendations",
     version="0.1.0",
     lifespan=lifespan,
