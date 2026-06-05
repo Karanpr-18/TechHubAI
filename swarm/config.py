@@ -14,6 +14,26 @@ from agentscope.model._base import ChatModelBase
 load_dotenv()
 
 
+class MistralFormatterWrapper:
+    """
+    Wrapper for AgentScope's OpenAI formatter to strip the 'name' field
+    from system, user, and assistant messages. This prevents 422 Unprocessable
+    Entity errors from the Mistral API which strictly forbids extra fields.
+    """
+    def __init__(self, original_formatter):
+        self.original_formatter = original_formatter
+
+    async def format(self, msgs: list) -> list[dict]:
+        formatted = await self.original_formatter.format(msgs)
+        for msg in formatted:
+            if "name" in msg and msg.get("role") in ["system", "user", "assistant"]:
+                del msg["name"]
+        return formatted
+
+    def __getattr__(self, name):
+        return getattr(self.original_formatter, name)
+
+
 @dataclass
 class LLMConfig:
     """Configuration for a single LLM provider."""
@@ -48,7 +68,7 @@ class LLMConfig:
             api_key=self.api_key,
             base_url=base_url
         )
-        return OpenAIChatModel(
+        model_instance = OpenAIChatModel(
             credential=cred,
             model=self.model,
             parameters=OpenAIChatModel.Parameters(
@@ -56,6 +76,9 @@ class LLMConfig:
                 max_tokens=self.max_tokens,
             )
         )
+        if self.provider == "mistral":
+            model_instance.formatter = MistralFormatterWrapper(model_instance.formatter)
+        return model_instance
 
 
 @dataclass

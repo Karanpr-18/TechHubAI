@@ -427,6 +427,27 @@ export default function Home() {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thinkingUpdates]);
 
+  // Fetch default configuration from backend on mount
+  useEffect(() => {
+    const fetchDefaultConfig = async () => {
+      try {
+        const response = await fetch(`${settings.api_url}/api/config`);
+        if (response.ok) {
+          const data = await response.json();
+          setSettings((prev) => ({
+            ...prev,
+            provider: data.provider || prev.provider,
+            model: data.model || prev.model,
+            fallback_model: data.fallback_model || prev.fallback_model,
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch default config from backend:", err);
+      }
+    };
+    fetchDefaultConfig();
+  }, [settings.api_url]);
+
   const apiBase = settings.api_url;
 
   const toggleMessage = (idx: number) => {

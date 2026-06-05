@@ -115,6 +115,18 @@ async def health_check():
     return {"status": "healthy", "service": "agent-swarm"}
 
 
+@app.get("/api/config")
+async def get_config():
+    """Retrieve default configuration from server environment."""
+    config = SwarmConfig()
+    return {
+        "provider": config.primary_llm.provider,
+        "model": config.primary_llm.model,
+        "fallback_model": config.primary_llm.fallback_model or "",
+        "has_api_key": bool(config.primary_llm.api_key),
+    }
+
+
 @app.post("/api/debate/start", response_model=SessionResponse)
 async def start_debate(request: StartDebateRequest):
     """
