@@ -941,8 +941,51 @@ export default function Home() {
         )}
       </AnimatePresence>
 
+      {/* Mid-Debate Interjection Dialog Overlay */}
+      <AnimatePresence>
+        {phase === "waiting_for_mid_debate_input" && interjectionQuestion && (
+          <motion.div
+            className="interjection-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
+            <motion.div
+              className="interjection-card"
+              variants={cardPopVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div className="interjection-card__emoji">⚖️</div>
+              <div className="interjection-card__title">The Judge Queries Your Preferences</div>
+              <div className="interjection-card__question">{interjectionQuestion}</div>
+              <form className="interjection-card__form" onSubmit={handleInterjectionSubmit}>
+                <input
+                  className="interjection-card__input"
+                  type="text"
+                  placeholder="Provide your input to direct the swarm..."
+                  value={interjectionAnswer}
+                  onChange={(e) => setInterjectionAnswer(e.target.value)}
+                  disabled={interjectionSubmitting}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="btn btn--primary"
+                  disabled={interjectionSubmitting || !interjectionAnswer.trim()}
+                >
+                  {interjectionSubmitting ? "Sending..." : "Submit Answers"}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Split Dashboard (Phase 2 & onwards) */}
-      {phase !== "input" && (
+      {(phase === "debating" || phase === "waiting_for_mid_debate_input" || phase === "error") && (
         <div className="swarm-dashboard">
           {/* Left Side: Activity Logs */}
           <div className="swarm-dashboard__left">
@@ -1080,51 +1123,10 @@ export default function Home() {
         </div>
       )}
 
-      {/* Mid-Debate Interjection Dialog Overlay */}
-      <AnimatePresence>
-        {phase === "waiting_for_mid_debate_input" && interjectionQuestion && (
-          <motion.div
-            className="interjection-overlay"
-            variants={overlayVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-          >
-            <motion.div
-              className="interjection-card"
-              variants={cardPopVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            >
-              <div className="interjection-card__emoji">⚖️</div>
-              <div className="interjection-card__title">The Judge Queries Your Preferences</div>
-              <div className="interjection-card__question">{interjectionQuestion}</div>
-              <form className="interjection-card__form" onSubmit={handleInterjectionSubmit}>
-                <input
-                  className="interjection-card__input"
-                  type="text"
-                  placeholder="Provide your input to direct the swarm..."
-                  value={interjectionAnswer}
-                  onChange={(e) => setInterjectionAnswer(e.target.value)}
-                  disabled={interjectionSubmitting}
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  className="btn btn--primary"
-                  disabled={interjectionSubmitting || !interjectionAnswer.trim()}
-                >
-                  {interjectionSubmitting ? "Sending..." : "Submit Answers"}
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* Judge Synthesis Section */}
-      {judgeSynthesis && phase !== "input" && (
+      {judgeSynthesis && ["alignment_chat", "awaiting_priorities", "finalizing"].includes(phase) && (
         <motion.div
           className="architecture-section"
           initial={{ opacity: 0, y: 20 }}

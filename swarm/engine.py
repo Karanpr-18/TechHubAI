@@ -631,6 +631,7 @@ class DebateEngine:
             "1. Evaluate and update the 1-10 importance rating for all 8 categories:\n"
             "   - tech_difficulty, efficiency, latency, cost, maintainability, scalability, time_to_market, community_support\n"
             "2. Decide if you need ONE more clarification question (decision = 'question') or if you have enough info to deliver the final verdict (decision = 'verdict').\n"
+            "   - CRITICAL RULE: If the user says 'no', 'no thanks', 'I like it', 'looks good', or indicates they don't want any changes, you MUST immediately choose 'verdict'. Do not ask any more questions.\n"
             f"   - Note: This is turn {self.state.alignment_turns} of 3. If this is turn 3, you MUST choose 'verdict'.\n"
             "3. If decision is 'question', formulate the next single clarification question (max 35 words). Do NOT ask multiple questions. Do NOT use bullet points. Ask exactly ONE single question.\n\n"
             "Return ONLY a valid JSON object matching this schema:\n"

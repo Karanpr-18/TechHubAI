@@ -512,7 +512,8 @@ body::after {
 @media (max-width: 1100px) {
   .swarm-dashboard {
     grid-template-columns: 1fr;
-    height: auto;
+    height: calc(100vh - 100px);
+    grid-template-rows: 1fr 2fr;
   }
 }
 
@@ -797,15 +798,13 @@ body::after {
 /* ─── Mid-Debate Interjection ──────────────────────────────────────── */
 
 .interjection-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(43, 41, 39, 0.25);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  padding: 2rem 0;
+  margin-top: 1rem;
+  z-index: 10;
+  position: relative;
 }
 
 .interjection-card {
