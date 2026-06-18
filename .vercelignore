@@ -1,0 +1,10 @@
+# Ignore Python backend files from Vercel deployments
+swarm/
+server.py
+requirements.txt
+venv/
+.env
+SETUP.md
+README.md
+openai_model_help.txt
+agentscope_help.txt
