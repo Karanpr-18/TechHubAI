@@ -290,6 +290,11 @@ async def get_debate_status(session_id: str):
             }
             for u in engine.state.thinking_updates
         ],
+        "token_usage": {
+            "input": engine.state.total_input_tokens,
+            "output": engine.state.total_output_tokens,
+            "total": engine.state.total_input_tokens + engine.state.total_output_tokens
+        }
     }
 
 
@@ -318,6 +323,11 @@ async def align_priorities(request: AlignRequest):
     result = await engine.process_alignment_turn(request.user_response)
     return {
         "session_id": request.session_id,
+        "token_usage": {
+            "input": engine.state.total_input_tokens,
+            "output": engine.state.total_output_tokens,
+            "total": engine.state.total_input_tokens + engine.state.total_output_tokens
+        },
         **result
     }
 
@@ -406,6 +416,11 @@ async def submit_priorities(request: PrioritiesRequest):
         "session_id": request.session_id,
         "status": "complete",
         "final_verdict": verdict,
+        "token_usage": {
+            "input": engine.state.total_input_tokens,
+            "output": engine.state.total_output_tokens,
+            "total": engine.state.total_input_tokens + engine.state.total_output_tokens
+        }
     }
 
 

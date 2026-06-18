@@ -402,11 +402,12 @@ export default function Home() {
     model: "llama-3.3-70b-versatile",
     fallback_model: "",
     api_key: "",
-    api_url: "http://localhost:8000",
+    api_url: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001",
   });
   const [error, setError] = useState<string | null>(null);
   const [userAlignmentResponse, setUserAlignmentResponse] = useState("");
   const [alignmentSubmitting, setAlignmentSubmitting] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState<{ input: number; output: number; total: number } | null>(null);
 
   // Mid-debate interjection state
   const [interjectionQuestion, setInterjectionQuestion] = useState("");
@@ -528,6 +529,9 @@ export default function Home() {
                 .then((statusData) => {
                   setJudgeSynthesis(statusData.judge_synthesis || "");
                   setMessages(statusData.messages || []);
+                  if (statusData.token_usage) {
+                    setTokenUsage(statusData.token_usage);
+                  }
                   const logs = statusData.thinking_updates?.map((u: any) => ({
                     ...u,
                     timestamp: u.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -607,6 +611,35 @@ export default function Home() {
     const responseText = userAlignmentResponse;
     setUserAlignmentResponse("");
 
+    // Start polling status to update thinking logs and transition state in real-time
+    let pollInterval: any = null;
+    const startPolling = () => {
+      pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`${apiBase}/api/debate/status/${sessionId}`);
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            setMessages(statusData.messages || []);
+            if (statusData.token_usage) {
+              setTokenUsage(statusData.token_usage);
+            }
+            if (statusData.status === "finalizing") {
+              setPhase("finalizing");
+            }
+            const logs = statusData.thinking_updates?.map((u: any) => ({
+              ...u,
+              timestamp: u.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+            })) || [];
+            setThinkingUpdates(logs);
+          }
+        } catch (err) {
+          console.error("Failed to poll status:", err);
+        }
+      }, 1000);
+    };
+
+    startPolling();
+
     try {
       const res = await fetch(`${apiBase}/api/debate/align`, {
         method: "POST",
@@ -623,15 +656,28 @@ export default function Home() {
 
       const data = await res.json();
 
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+
       if (data.status === "complete") {
         setFinalVerdict(data.final_verdict);
         setPhase("complete");
         setActiveAgent(null);
+        if (data.token_usage) {
+          setTokenUsage(data.token_usage);
+        }
       } else {
         const statusRes = await fetch(`${apiBase}/api/debate/status/${sessionId}`);
         if (statusRes.ok) {
           const statusData = await statusRes.json();
           setMessages(statusData.messages || []);
+          if (statusData.token_usage) {
+            setTokenUsage(statusData.token_usage);
+          }
+          if (statusData.status) {
+            setPhase(statusData.status);
+          }
           const logs = statusData.thinking_updates?.map((u: any) => ({
             ...u,
             timestamp: u.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -640,6 +686,9 @@ export default function Home() {
         }
       }
     } catch (err) {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setAlignmentSubmitting(false);
@@ -680,6 +729,7 @@ export default function Home() {
     setError(null);
     setInterjectionQuestion("");
     setInterjectionAnswer("");
+    setTokenUsage(null);
   }, []);
 
   const getAgentClass = (name: string): string => {
@@ -887,7 +937,7 @@ export default function Home() {
                         className="settings-field__input"
                         value={settings.api_url}
                         onChange={(e) => setSettings({ ...settings, api_url: e.target.value })}
-                        placeholder="http://localhost:8000"
+                        placeholder="http://localhost:8001"
                       />
                     </div>
                     <div className="settings-field">
@@ -1180,6 +1230,17 @@ export default function Home() {
               {alignmentSubmitting ? "Sending..." : "Send Clarification"}
             </button>
           </form>
+
+          {alignmentSubmitting && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1rem", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              <div className="loading-dots" style={{ transform: "scale(0.8)", margin: 0, padding: 0 }}>
+                <span />
+                <span />
+                <span />
+              </div>
+              <span>The Judge is processing your suggestion & optimizing stack...</span>
+            </div>
+          )}
         </motion.div>
       )}
 
@@ -1213,6 +1274,28 @@ export default function Home() {
           <div className="final-verdict__content">
             <SafeMarkdown content={finalVerdict} />
           </div>
+
+          {tokenUsage && (
+            <div className="token-usage-badge" style={{
+              marginTop: "1.5rem",
+              padding: "1rem",
+              borderRadius: "var(--radius-md)",
+              background: "rgba(138, 115, 85, 0.05)",
+              border: "1px solid rgba(138, 115, 85, 0.15)",
+              display: "flex",
+              justifyContent: "space-around",
+              alignItems: "center",
+              fontSize: "0.85rem",
+              color: "var(--text-secondary)",
+              boxShadow: "var(--shadow-inset-clay)"
+            }}>
+              <div>📥 <strong>Input Tokens:</strong> {tokenUsage.input.toLocaleString()}</div>
+              <div style={{ width: "1px", height: "20px", background: "rgba(138, 115, 85, 0.2)" }} />
+              <div>📤 <strong>Output Tokens:</strong> {tokenUsage.output.toLocaleString()}</div>
+              <div style={{ width: "1px", height: "20px", background: "rgba(138, 115, 85, 0.2)" }} />
+              <div>⚡ <strong>Total Tokens:</strong> <span style={{ color: "var(--accent-primary)", fontWeight: "bold" }}>{tokenUsage.total.toLocaleString()}</span></div>
+            </div>
+          )}
 
           <div style={{ marginTop: "2rem", textAlign: "center" }}>
             <button className="btn btn--secondary" onClick={resetAll}>🔄 Start a New Council</button>

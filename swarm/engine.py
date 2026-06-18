@@ -105,6 +105,8 @@ class DebateState:
     mid_debate_answer: str = ""
     mid_debate_answers: list[dict] = field(default_factory=list)  # [{"question": ..., "answer": ...}]
     user_interjection_event: Optional[asyncio.Event] = field(default=None)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
 
     def get_debate_history(self, max_rounds: Optional[int] = None) -> str:
         """Get the formatted debate history for context."""
@@ -223,6 +225,18 @@ class DebateEngine:
         self.state.thinking_updates.append(update)
         print(f"[{agent_name}] {status_text}")
 
+    def _accumulate_token_usage(self, reply_msg):
+        if hasattr(reply_msg, "usage") and reply_msg.usage is not None:
+            self._accumulate_token_usage_obj(reply_msg.usage)
+
+    def _accumulate_token_usage_obj(self, usage):
+        if usage is not None:
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
+            self.state.total_input_tokens += input_tokens
+            self.state.total_output_tokens += output_tokens
+            print(f"Accumulated tokens: input={input_tokens}, output={output_tokens}, total={self.state.total_input_tokens + self.state.total_output_tokens}")
+
     # ─── Phase 1: Initial Proposals ──────────────────────────────────────
 
     async def generate_initial_proposals(self, project_requirements: str) -> dict[str, str]:
@@ -247,6 +261,7 @@ class DebateEngine:
             research_results = await cached_research(
                 query=f"{agent.search_guidance}{search_suffix} for: {project_requirements[:200]}",
                 config=self.config,
+                token_callback=self._accumulate_token_usage_obj,
             )
 
             self.add_thinking_update(agent.name, agent.emoji, f"Formulating initial proposal stack based on research...")
@@ -269,6 +284,7 @@ class DebateEngine:
             user_msg = UserMsg(name="System", content=user_prompt)
             
             reply_msg = await as_agent.reply(user_msg)
+            self._accumulate_token_usage(reply_msg)
             response = extract_text(reply_msg.content)
 
             # Create and store the message
@@ -330,6 +346,7 @@ class DebateEngine:
                         config=self.config,
                         max_search_results=2,
                         crawl_top_n=1,
+                        token_callback=self._accumulate_token_usage_obj,
                     )
 
             round_prompts = {
@@ -387,6 +404,7 @@ class DebateEngine:
             user_msg = UserMsg(name="System", content=user_prompt)
             
             reply_msg = await as_agent.reply(user_msg)
+            self._accumulate_token_usage(reply_msg)
             response = extract_text(reply_msg.content)
 
             msg = DebateMessage(
@@ -462,6 +480,7 @@ class DebateEngine:
         user_msg = UserMsg(name="System", content=user_prompt)
         
         reply_msg = await as_agent.reply(user_msg)
+        self._accumulate_token_usage(reply_msg)
         response = extract_text(reply_msg.content)
 
         cleaned = response.strip()
@@ -528,6 +547,7 @@ class DebateEngine:
         user_msg = UserMsg(name="System", content=user_prompt)
         
         reply_msg = await as_agent.reply(user_msg)
+        self._accumulate_token_usage(reply_msg)
         self.state.judge_synthesis = extract_text(reply_msg.content)
 
         # Notify via a Judge message
@@ -578,6 +598,7 @@ class DebateEngine:
         user_msg = UserMsg(name="System", content=user_prompt)
         
         reply_msg = await as_agent.reply(user_msg)
+        self._accumulate_token_usage(reply_msg)
         first_question = extract_text(reply_msg.content)
 
         # Store in history
@@ -665,6 +686,7 @@ class DebateEngine:
         user_msg = UserMsg(name="System", content=user_prompt)
         
         reply_msg = await as_agent.reply(user_msg)
+        self._accumulate_token_usage(reply_msg)
         response_str = extract_text(reply_msg.content)
 
         cleaned = response_str.strip()
@@ -721,13 +743,26 @@ class DebateEngine:
         self.add_thinking_update("The Judge", "🏆", "Preparing final recommendation verdict...")
         _, prompt_instruction = classify_and_augment_domain(self.state.project_requirements)
 
+        # Format alignment conversation history for the prompt
+        formatted_history = ""
+        if self.state.alignment_history:
+            for turn in self.state.alignment_history:
+                role_name = "Judge" if turn["role"] == "assistant" else "User"
+                formatted_history += f"{role_name}: {turn['content']}\n"
+
         user_prompt = (
             f"## Project Requirements\n{self.state.project_requirements}\n\n"
             f"## Synthesized Architectures\n{self.state.judge_synthesis}\n\n"
+        )
+        if formatted_history:
+            user_prompt += f"## User Feedback / Alignment History\n{formatted_history}\n\n"
+
+        user_prompt += (
             f"## User Priority Ratings (Blended)\n{priorities.to_text()}\n\n"
             "## Your Task\n"
-            "Based on the user's priority ratings, select the BEST architecture "
-            "and MODIFY the tech stack choices to optimally match their priorities. "
+            "Based on the user's feedback, alignment history, and priority ratings, select the BEST architecture "
+            "and MODIFY the tech stack choices to optimally match their priorities and specific suggestions. "
+            "For example, if they expressed a preference for a specific framework or tool, or rejected a proposal during the conversation, respect that feedback. "
             "If the user values cost (10/10) but latency is low (2/10), adjust accordingly. "
             "Provide the complete final recommendation with a Mermaid.js diagram.\n"
             f"{prompt_instruction}"
@@ -740,6 +775,7 @@ class DebateEngine:
         user_msg = UserMsg(name="System", content=user_prompt)
         
         reply_msg = await as_agent.reply(user_msg)
+        self._accumulate_token_usage(reply_msg)
         self.state.final_verdict = extract_text(reply_msg.content)
 
         self.state.status = "complete"
